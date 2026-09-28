@@ -37,8 +37,8 @@ object CoreRepos {
  * --node-wizard source.
  */
 enum class NodeCoreSource(val id: String, val label: String, val repo: String) {
-    Fork("fork", "Форк meepo161", CoreRepos.FORK),
-    Official("official", "Оригинал p1neappleXpress", CoreRepos.OFFICIAL),
+    Fork("fork", "Форк", CoreRepos.FORK),
+    Official("official", "Оригинал", CoreRepos.OFFICIAL),
 }
 
 /** The Windows proxy settings found before OpenFlux changed them. */
