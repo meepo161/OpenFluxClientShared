@@ -167,6 +167,24 @@ object BuiltInBrowser {
         return found.toList()
     }
 
+    internal fun cookieFor(name: String, value: String, domain: String): CefCookie {
+        val now = java.util.Date()
+        return CefCookie(name, value, domain, "/", true, true, now, now, false, null)
+    }
+
+    /**
+     * Puts a saved sign-in back into the browser before a page opens, so
+     * the page is signed in without the user typing anything.
+     */
+    fun setCookies(url: String, cookies: Map<String, String>, domain: String) {
+        if (client == null || cookies.isEmpty()) return // see cookies()
+        val manager = CefCookieManager.getGlobalManager()
+        for ((name, value) in cookies) {
+            check(manager.setCookie(url, cookieFor(name, value, domain))) { "Встроенный браузер не принял cookies" }
+        }
+        manager.flushStore(null)
+    }
+
     /** Forgets every cookie: a sign-in must not outlive what it was made for. */
     fun clearCookies() {
         if (client == null) return // nothing to forget, and see cookies()

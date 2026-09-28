@@ -12,6 +12,8 @@ import io.openflux.desktop.model.ServerProbe
 import io.openflux.desktop.model.SshTarget
 import io.openflux.desktop.model.YandexDocument
 import io.openflux.desktop.ui.BrowserPage
+import io.openflux.desktop.service.AccountException
+import io.openflux.desktop.service.Accounts
 import io.openflux.desktop.service.NodeWizardService
 import io.openflux.desktop.service.SettingsRepository
 import kotlinx.coroutines.Dispatchers
@@ -44,7 +46,7 @@ import java.util.concurrent.atomic.AtomicLong
 class CoreNodeWizard(
     private val settings: SettingsRepository,
     private val binary: CoreBinary,
-    private val browser: YandexDocBrowser = YandexDocBrowser(),
+    private val accounts: Accounts,
 ) : NodeWizardService {
     private val json = Json { ignoreUnknownKeys = true }
     private val lock = Mutex()
@@ -140,14 +142,19 @@ class CoreNodeWizard(
             .getOrDefault(emptySet())
     }
 
-    override val documentPage: StateFlow<BrowserPage?> = browser.page
+    override val documentPage: StateFlow<BrowserPage?> = accounts.page
 
-    override suspend fun createDocument(fileName: String, onStep: (String) -> Unit): YandexDocument = browser.create(fileName, onStep)
+    override suspend fun createDocument(fileName: String, onStep: (String) -> Unit): YandexDocument =
+        try {
+            accounts.createWizardDocument(fileName, onStep)
+        } catch (e: AccountException) {
+            throw NodeWizardException(e.message ?: "Не получилось создать документ")
+        }
 
-    override fun cancelDocument() = browser.cancel()
+    override fun cancelDocument() = accounts.cancel()
 
     override fun close() {
-        browser.cancel()
+        accounts.cancel()
         val current = helper
         helper = null
         if (current != null) {

@@ -67,6 +67,14 @@ interface ConnectionService {
     fun submitCaptcha()
     fun dismissCaptcha()
 
+    /**
+     * Hands the saved sign-in of [kind] to the exit over the tunnel, for
+     * each of the profile's transports of that service; the exit applies
+     * and keeps it. Returns how many transports it went to.
+     */
+    suspend fun pushAccountToExit(kind: AccountKind): Int =
+        throw UnsupportedOperationException("Передать вход ноде здесь нельзя")
+
     /** Stops the core and undoes system changes; called once on app exit. */
     fun shutdown()
 }
@@ -196,6 +204,7 @@ class AppContainer(
     val platform: PlatformServices,
     val shareCodec: ShareLinkCodec,
     val nodeWizard: NodeWizardService,
+    val accounts: Accounts,
 ) {
     /** An `openflux://` link opened from outside (a scanned code, a chat); the Profiles screen imports it. */
     val incomingLink = MutableStateFlow<String?>(null)
