@@ -3,6 +3,7 @@ package io.openflux.desktop
 import io.openflux.desktop.model.AccountKind
 import io.openflux.desktop.model.AccountSession
 import io.openflux.desktop.model.AuthStatus
+import io.openflux.desktop.model.MailruCloud
 import io.openflux.desktop.service.AccountBrowser
 import io.openflux.desktop.service.AccountException
 import io.openflux.desktop.service.AccountRepository
@@ -44,6 +45,13 @@ class FakeBrowser : AccountBrowser {
         onOpen(url)
     }
 
+    val loaded = mutableListOf<String>()
+    var onLoad: FakeBrowser.(String) -> Unit = {}
+    override fun load(url: String) {
+        loaded += url
+        this.url = url
+        onLoad(url)
+    }
     override suspend fun evaluate(script: String) = this.script(script)
     override suspend fun cookies(kind: AccountKind) = jar
     override fun close() {
@@ -80,11 +88,31 @@ class AccountsTest {
     }
 
     @Test
-    fun mailruSignInCountsWhereverThePageIs() = runTest {
+    fun mailruSignInCarriesOnToCloud() = runTest {
         val jar = mapOf("Mpop" to "1700000000:abc:ivan@mail.ru:")
-        val browser = FakeBrowser().apply { onOpen = { url = "https://id.vk.ru/auth"; this.jar = jar } }
+        val browser = FakeBrowser().apply {
+            // VK ID leaves the page on VK; Cloud then gets its own cookie.
+            onOpen = { url = "https://m.vk.ru/feed"; this.jar = jar }
+            onLoad = { this.jar = this.jar + ("sdcs" to "x") }
+        }
         val session = testAccounts(this, browser = browser).signIn(AccountKind.Mailru)
         assertEquals("ivan@mail.ru", session.login)
+        assertEquals(listOf("https://cloud.mail.ru/home/"), browser.loaded)
+        assertEquals("x", session.cookies["sdcs"])
+    }
+
+    @Test
+    fun mailruDocumentIsPublicCloudLink() = runTest {
+        val repo = MemoryAccounts().apply {
+            save(AccountSession(AccountKind.Mailru, "ivan@mail.ru", mapOf("Mpop" to "a:b:ivan@mail.ru:", "sdcs" to "x"), 1, 1))
+        }
+        val browser = FakeBrowser().apply {
+            onOpen = { url = "https://cloud.mail.ru/home" }
+            script = { """{"state":"done","url":"https://cloud.mail.ru/public/n2CE/cKhGUVKw1"}""" }
+        }
+        val url = testAccounts(this, repo, browser).createDocument(AccountKind.Mailru, "doc")
+        assertEquals("https://cloud.mail.ru/public/n2CE/cKhGUVKw1", url)
+        assertEquals(MailruCloud.HOME, browser.opened.single().first)
     }
 
     @Test
@@ -147,10 +175,6 @@ class AccountsTest {
         assertTrue("mpfs/mkdir: 403" in e.message.orEmpty())
     }
 
-    @Test
-    fun mailruDoesNotCreateDocumentsYet() = runTest {
-        assertFailsWith<AccountException> { testAccounts(this).createDocument(AccountKind.Mailru, "d") }
-    }
 
     @Test
     fun checkMarksExpired() = runTest {

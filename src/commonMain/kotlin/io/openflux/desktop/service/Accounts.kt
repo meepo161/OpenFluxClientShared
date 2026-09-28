@@ -4,6 +4,7 @@ import io.openflux.desktop.model.AccountCookies
 import io.openflux.desktop.model.AccountKind
 import io.openflux.desktop.model.AccountSession
 import io.openflux.desktop.model.AuthStatus
+import io.openflux.desktop.model.MailruCloud
 import io.openflux.desktop.model.NodeDocuments
 import io.openflux.desktop.model.YandexDisk
 import io.openflux.desktop.model.YandexDocument
@@ -67,11 +68,20 @@ class Accounts(
         try {
             browser.open(kind, kind.signInUrl, emptyMap()) { set(kind, AuthStatus.Busy(it)) }
             val deadline = now() + YandexDisk.SIGN_IN_TIMEOUT_MS
+            var carriedOn = false
             while (true) {
                 if (browser.closed) throw AccountException("Вход в ${kind.label} отменён", cancelled = true)
                 if (now() > deadline) throw AccountException("Время на вход в ${kind.label} вышло")
                 val jar = browser.cookies(kind)
-                if (AccountCookies.signedIn(kind, jar) && (!kind.waitForHome || browser.url.startsWith(kind.homeUrl))) {
+                val finish = kind.finishUrl
+                if (AccountCookies.signedIn(kind, jar) && finish != null && kind.finishCookie !in jar) {
+                    // Signed in, but not yet everywhere the session is needed.
+                    if (!carriedOn && !browser.loading) {
+                        carriedOn = true
+                        set(kind, AuthStatus.Busy("Вход выполнен, открываю ${kind.label}…"))
+                        browser.load(finish)
+                    }
+                } else if (AccountCookies.signedIn(kind, jar) && (!kind.waitForHome || browser.url.startsWith(kind.homeUrl))) {
                     val t = now()
                     val session = AccountSession(kind, AccountCookies.login(kind, jar), jar, signedInAt = t, checkedAt = t)
                     repo.save(session)
@@ -100,28 +110,29 @@ class Accounts(
         }
         require(Regex("^[a-z0-9-]{1,64}$").matches(fileName)) { "Неверное имя документа" }
         val session = validSession(kind) ?: signIn(kind, inDialog)
-        set(kind, AuthStatus.Busy("Открываю Яндекс Диск…"))
+        val maker = DocumentMaker.of(kind)
+        set(kind, AuthStatus.Busy("Открываю ${maker.place}…"))
         _signingIn.value = kind.takeIf { inDialog }
         try {
-            browser.open(kind, kind.homeUrl, session.cookies) { set(kind, AuthStatus.Busy(it)) }
+            browser.open(kind, maker.startUrl, session.cookies) { set(kind, AuthStatus.Busy(it)) }
             val deadline = now() + DISK_TIMEOUT_MS
             while (true) {
                 if (browser.closed) throw AccountException("Создание документа отменено", cancelled = true)
-                if (now() > deadline) throw AccountException("Диск не открылся за 2 минуты")
+                if (now() > deadline) throw AccountException("${maker.place} не открылся за 2 минуты")
                 val url = browser.url
-                if ("passport.yandex" in url) {
+                if (maker.signInPages.any { it in url }) {
                     markExpired(kind)
                     throw AccountException("Сессия ${kind.label} истекла — войдите заново", expired = true)
                 }
-                if (!browser.loading && url.startsWith(YandexDisk.DISK_CLIENT)) {
-                    set(kind, AuthStatus.Busy("Создаю документ на Яндекс Диске…"))
-                    val raw = runCatching { browser.evaluate(YandexDisk.script(fileName)) }.getOrNull()
+                if (!browser.loading && url.startsWith(maker.readyUrl)) {
+                    set(kind, AuthStatus.Busy("Создаю документ: ${maker.place}…"))
+                    val raw = runCatching { browser.evaluate(maker.script(fileName)) }.getOrNull()
                     val result = raw?.let { runCatching { Json.parseToJsonElement(it).jsonObject }.getOrNull() }
                     when (result?.get("state")?.jsonPrimitive?.content) {
                         "done" -> {
-                            val doc = result["url"]?.jsonPrimitive?.content?.let(NodeDocuments::clean)
-                                ?: throw AccountException("Яндекс вернул неожиданную ссылку на документ")
-                            // Yandex may have refreshed the session while the page was open.
+                            val doc = result["url"]?.jsonPrimitive?.content?.let(maker.clean)
+                                ?: throw AccountException("${kind.label} вернул неожиданную ссылку на документ")
+                            // The service may have refreshed the session while the page was open.
                             val fresh = runCatching { browser.cookies(kind) }.getOrDefault(emptyMap())
                                 .takeIf { AccountCookies.signedIn(kind, it) } ?: session.cookies
                             val t = now()
@@ -130,7 +141,7 @@ class Accounts(
                             return doc
                         }
                         "fail" -> throw AccountException(
-                            "Не получилось создать документ: " + (result["error"]?.jsonPrimitive?.content ?: "ошибка Яндекса"),
+                            "Не получилось создать документ: " + (result["error"]?.jsonPrimitive?.content ?: "ошибка ${kind.label}"),
                         )
                         else -> Unit // the page is still loading its data
                     }
@@ -214,5 +225,33 @@ class Accounts(
     companion object {
         const val RECHECK_MS = 30 * 60 * 1000L
         private const val DISK_TIMEOUT_MS = 2 * 60 * 1000L
+    }
+}
+
+/**
+ * How a service makes a document on its own page: which page to open,
+ * when it is ready for [script], which pages mean the session is gone.
+ */
+internal class DocumentMaker(
+    val place: String,
+    val startUrl: String,
+    val readyUrl: String,
+    val signInPages: List<String>,
+    val script: (String) -> String,
+    val clean: (String) -> String?,
+) {
+    companion object {
+        fun of(kind: AccountKind): DocumentMaker = when (kind) {
+            AccountKind.Yandex -> DocumentMaker(
+                "Яндекс Диск", YandexDisk.DISK_CLIENT, YandexDisk.DISK_CLIENT,
+                listOf("passport.yandex"), YandexDisk::script, NodeDocuments::clean,
+            )
+            AccountKind.Mailru -> DocumentMaker(
+                "Облако Mail", MailruCloud.HOME, MailruCloud.HOME,
+                // Cloud comes back with autologin=no when Mail did not let the session in.
+                listOf("account.mail.ru/login", "id.vk.ru", "login.vk.com", "autologin=no"), MailruCloud::script, MailruCloud::clean,
+            )
+            AccountKind.Max -> throw AccountException("MAX не создаёт документы")
+        }
     }
 }

@@ -23,6 +23,12 @@ enum class AccountKind(
      * Yandex sets its login cookie before the rest of the session.
      */
     val waitForHome: Boolean = true,
+    /**
+     * Where the sign-in is carried on to, and the cookie that shows it got
+     * there: Mail.ru hands its session to Cloud only when Cloud is opened.
+     */
+    val finishUrl: String? = null,
+    val finishCookie: String? = null,
 ) {
     Yandex(
         "Яндекс", "ic_yandex", YandexDisk.START_URL, YandexDisk.DISK_CLIENT, ".yandex.ru", true,
@@ -30,9 +36,11 @@ enum class AccountKind(
     ),
     Mailru(
         "Mail.ru", "ic_mailru", "https://account.mail.ru/login?page=https%3A%2F%2Fcloud.mail.ru%2Fhome%2F",
-        "https://cloud.mail.ru/home", ".mail.ru", false, setOf(TransportType.MAILRU),
-        // VK ID may leave the page on its own site after signing in.
+        "https://cloud.mail.ru/home", ".mail.ru", true, setOf(TransportType.MAILRU),
+        // VK ID may leave the page on its own site (m.vk.ru) after signing in.
         waitForHome = false,
+        finishUrl = "https://cloud.mail.ru/home/",
+        finishCookie = "sdcs",
     ),
     Max("MAX", "ic_max", "https://web.max.ru/", "https://web.max.ru/", ".max.ru", false, setOf(TransportType.ONEME), signsIn = false);
 
@@ -40,7 +48,7 @@ enum class AccountKind(
     val cookieUrls: List<String>
         get() = when (this) {
             Yandex -> YandexDisk.ACCOUNT_URLS
-            Mailru -> listOf("https://account.mail.ru/", "https://mail.ru/", "https://e.mail.ru/", "https://cloud.mail.ru/")
+            Mailru -> listOf("https://cloud.mail.ru/", "https://auth.mail.ru/", "https://account.mail.ru/", "https://mail.ru/", "https://e.mail.ru/")
             Max -> listOf(homeUrl)
         }
 

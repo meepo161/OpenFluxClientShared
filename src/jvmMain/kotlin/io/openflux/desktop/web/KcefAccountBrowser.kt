@@ -31,6 +31,10 @@ class KcefAccountBrowser : AccountBrowser {
 
     override suspend fun evaluate(script: String) = current?.evaluate(script) ?: error("Страница закрыта")
 
+    override fun load(url: String) {
+        current?.load(url)
+    }
+
     override suspend fun cookies(kind: AccountKind): Map<String, String> {
         val urls = kind.cookieUrls
         val now = Date()

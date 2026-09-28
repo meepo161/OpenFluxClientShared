@@ -84,8 +84,9 @@ class AccountsScreenModel(private val container: AppContainer) : ScreenModel {
         val profile = Profile(
             id = container.profiles.newId(),
             name = "${doc.kind.label} ${doc.url.takeLast(6)}",
-            icon = "ic_yandex",
-            transport = TransportType.VYANDEX,
+            icon = doc.kind.icon,
+            // Volga is the Yandex carrier the core prefers; Mail.ru has one.
+            transport = if (doc.kind == AccountKind.Mailru) TransportType.MAILRU else TransportType.VYANDEX,
             value = doc.url,
             secret = container.platform.newSecret(),
             session = true,
