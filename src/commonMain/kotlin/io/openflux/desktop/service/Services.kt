@@ -1,6 +1,8 @@
 package io.openflux.desktop.service
 
 import androidx.compose.runtime.staticCompositionLocalOf
+import io.openflux.desktop.model.AccountKind
+import io.openflux.desktop.model.AccountSession
 import io.openflux.desktop.model.AppSettings
 import io.openflux.desktop.model.CaptchaPrompt
 import io.openflux.desktop.model.ConnectionState
@@ -33,6 +35,13 @@ interface ProfileRepository {
 interface SettingsRepository {
     val settings: StateFlow<AppSettings>
     fun update(transform: (AppSettings) -> AppSettings)
+}
+
+/** Saved sign-ins, one per service. The file is readable by its owner only. */
+interface AccountRepository {
+    val sessions: StateFlow<Map<AccountKind, AccountSession>>
+    fun save(session: AccountSession)
+    fun remove(kind: AccountKind)
 }
 
 /** Runs the OpenFlux core for one profile at a time. */

@@ -5,6 +5,7 @@ import dev.datlag.kcef.KCEFBrowser
 import dev.datlag.kcef.KCEFClient
 import io.openflux.desktop.data.AppDirs
 import io.openflux.desktop.ui.BrowserPage
+import io.openflux.desktop.model.YandexDisk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.swing.Swing
@@ -355,7 +356,7 @@ object BuiltInBrowser {
         listOf("jcef_helper.exe", "jcef_helper").map { File(dir, it) }.firstOrNull(File::isFile)?.absolutePath
 
     private const val START_TIMEOUT_MS = 60_000L
-    const val YANDEX_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:153.0) Gecko/20100101 Firefox/153.0"
+    const val YANDEX_USER_AGENT = YandexDisk.USER_AGENT
 
     /**
      * The JetBrains Runtime build with JCEF that matches the JCEF classes
