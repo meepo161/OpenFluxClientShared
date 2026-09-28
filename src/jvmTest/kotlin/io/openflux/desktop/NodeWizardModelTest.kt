@@ -440,7 +440,7 @@ class NodeWizardModelTest {
         val connection = FakeConnection(exitIp)
         val node = FakeNode(sudoFails)
         val platform = FakePlatform()
-        val container = AppContainer(profiles, settings, connection, platform, FakeShareLinkCodec(), node)
+        val container = AppContainer(profiles, settings, connection, platform, FakeShareLinkCodec(), node, testAccounts(kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined)))
     }
 
     private class FakeNode(private val sudoFails: Boolean) : NodeWizardService {

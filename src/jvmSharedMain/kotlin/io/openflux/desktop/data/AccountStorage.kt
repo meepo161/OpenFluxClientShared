@@ -4,6 +4,7 @@ import io.openflux.desktop.model.AccountCookies
 import io.openflux.desktop.model.AccountKind
 import io.openflux.desktop.model.AccountSession
 import io.openflux.desktop.model.Profile
+import io.openflux.desktop.model.SessionSpec
 import io.openflux.desktop.model.YandexDisk
 import io.openflux.desktop.service.AccountRepository
 import io.openflux.desktop.service.ProbeResult
@@ -94,9 +95,14 @@ class HttpSessionProbe(private val urls: Map<AccountKind, String> = DEFAULT_URLS
 object CookieStoreSeeder {
     private val serializer = MapSerializer(String.serializer(), MapSerializer(String.serializer(), String.serializer()))
 
-    fun seed(file: File, profile: Profile, sessions: Map<AccountKind, AccountSession>) {
+    fun seed(
+        file: File,
+        profile: Profile,
+        sessions: Map<AccountKind, AccountSession>,
+        key: (SessionSpec) -> String = { it.value },
+    ) {
         val existing = runCatching { StoreJson.decodeFromString(serializer, file.readText()) }.getOrDefault(emptyMap())
-        val seeded = AccountCookies.seed(existing, profile, sessions)
+        val seeded = AccountCookies.seed(existing, profile, sessions, key)
         if (seeded == existing) return
         JsonFile(file, serializer).write(seeded)
     }

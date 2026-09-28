@@ -98,19 +98,23 @@ object AccountCookies {
     /**
      * The core's cookie store ({document URL: {name: value}}) with each
      * valid account merged into the jars of the profile's carriers of that
-     * service: the account's cookies win, a passed check's stay.
+     * service: the account's cookies win, a passed check's stay. [key] is
+     * how the core names a carrier's jar: the document URL on the desktop,
+     * "type URL" in the Android library.
      */
     fun seed(
         store: Map<String, Map<String, String>>,
         profile: Profile,
         sessions: Map<AccountKind, AccountSession>,
+        key: (SessionSpec) -> String = { it.value },
     ): Map<String, Map<String, String>> {
         val out = store.toMutableMap()
         for (spec in profile.sessionSpecs()) {
             val kind = AccountKind.of(spec.type) ?: continue
             val session = sessions[kind]?.takeUnless { it.expired || it.cookies.isEmpty() } ?: continue
             if (spec.value.isEmpty()) continue
-            out[spec.value] = out[spec.value].orEmpty() + session.cookies
+            val name = key(spec)
+            out[name] = out[name].orEmpty() + session.cookies
         }
         return out
     }

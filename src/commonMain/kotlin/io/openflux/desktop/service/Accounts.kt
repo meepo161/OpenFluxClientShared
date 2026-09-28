@@ -6,9 +6,11 @@ import io.openflux.desktop.model.AccountSession
 import io.openflux.desktop.model.AuthStatus
 import io.openflux.desktop.model.NodeDocuments
 import io.openflux.desktop.model.YandexDisk
+import io.openflux.desktop.model.YandexDocument
 import io.openflux.desktop.ui.BrowserPage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -38,7 +40,7 @@ class Accounts(
     val page: StateFlow<BrowserPage?> = browser.page
     private val _signingIn = MutableStateFlow<AccountKind?>(null)
 
-    /** The service whose page is open in the browser, for the sign-in dialog. */
+    /** The service whose page the sign-in dialog shows; null when none (or a screen shows it itself). */
     val signingIn: StateFlow<AccountKind?> = _signingIn.asStateFlow()
 
     fun statusOf(kind: AccountKind): AuthStatus = _status.value[kind] ?: AuthStatus.SignedOut
@@ -54,10 +56,13 @@ class Accounts(
 
     private fun restore(kind: AccountKind) = set(kind, repo.sessions.value[kind]?.let(::fromSession) ?: AuthStatus.SignedOut)
 
-    /** Opens the service's sign-in page and waits until the user has signed in. */
-    suspend fun signIn(kind: AccountKind): AccountSession {
+    /**
+     * Opens the service's sign-in page and waits until the user has signed
+     * in. [inDialog] false: the caller shows [page] itself (the node wizard).
+     */
+    suspend fun signIn(kind: AccountKind, inDialog: Boolean = true): AccountSession {
         set(kind, AuthStatus.Busy("Войдите в аккаунт ${kind.label} во встроенном браузере"))
-        _signingIn.value = kind
+        _signingIn.value = kind.takeIf { inDialog }
         try {
             browser.open(kind, kind.signInUrl, emptyMap()) { set(kind, AuthStatus.Busy(it)) }
             val deadline = now() + YandexDisk.SIGN_IN_TIMEOUT_MS
@@ -88,14 +93,14 @@ class Accounts(
      * user (signing in first when there is no working session), and
      * returns its link.
      */
-    suspend fun createDocument(kind: AccountKind, fileName: String): String {
+    suspend fun createDocument(kind: AccountKind, fileName: String, inDialog: Boolean = true): String {
         if (!kind.createsDocuments) {
             throw AccountException("${kind.label} пока не умеет создавать документы сам — вставьте ссылку вручную")
         }
         require(Regex("^[a-z0-9-]{1,64}$").matches(fileName)) { "Неверное имя документа" }
-        val session = validSession(kind) ?: signIn(kind)
+        val session = validSession(kind) ?: signIn(kind, inDialog)
         set(kind, AuthStatus.Busy("Открываю Яндекс Диск…"))
-        _signingIn.value = kind
+        _signingIn.value = kind.takeIf { inDialog }
         try {
             browser.open(kind, kind.homeUrl, session.cookies) { set(kind, AuthStatus.Busy(it)) }
             val deadline = now() + DISK_TIMEOUT_MS
@@ -137,6 +142,22 @@ class Accounts(
         } finally {
             _signingIn.value = null
             browser.close()
+        }
+    }
+
+    /**
+     * The node wizard's document: created with the Yandex account (signing
+     * in first when needed) on a page the wizard shows itself; [onStep]
+     * gets the progress lines. The returned cookies are the account's.
+     */
+    suspend fun createWizardDocument(fileName: String, onStep: (String) -> Unit): YandexDocument = coroutineScope {
+        val kind = AccountKind.Yandex
+        val progress = launch { status.collect { (it[kind] as? AuthStatus.Busy)?.let { busy -> onStep(busy.step) } } }
+        try {
+            val url = createDocument(kind, fileName, inDialog = false)
+            YandexDocument(url, AccountCookies.header(validSession(kind)?.cookies.orEmpty()))
+        } finally {
+            progress.cancel()
         }
     }
 

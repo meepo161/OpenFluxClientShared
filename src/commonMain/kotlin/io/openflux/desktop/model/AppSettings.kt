@@ -70,6 +70,11 @@ data class AppSettings(
     val window: WindowBounds? = null,
     /** Node wizard: trusted SSH host keys by "host:port". */
     val knownHostKeys: Map<String, String> = emptyMap(),
+    /**
+     * Open documents as the signed-in account (Accounts tab): the sign-in
+     * goes into the core's cookie store, and to your own nodes.
+     */
+    val useAccountSessions: Boolean = true,
     /** Node wizard: servers used before, newest first. No passwords. */
     val knownServers: List<KnownServer> = emptyList(),
 )
