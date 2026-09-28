@@ -351,36 +351,42 @@ private fun ColumnScope.DocumentStep(model: NodeWizardModel) {
 private fun ColumnScope.VolgaDocument(model: NodeWizardModel) {
     val idle = model.busy == null
     val progress = model.documentProgress
-    SectionLabel("Документ Яндекса")
+    val settings by LocalAppContainer.current.settings.settings.collectAsState()
+    // Making the document with a Yandex sign-in is a developer-mode tool,
+    // like the Accounts tab; otherwise the step takes the user's own link.
+    val signIn = settings.developerMode
+    SectionLabel(if (signIn) "Документ Яндекса" else "Свой пустой документ")
     if (model.documentUrl.isNotEmpty()) {
         Spacer(Modifier.height(AppTheme.spacing.s))
         Banner("Документ готов: ${model.documentUrl}", Tone.Success, icon = Icons.Rounded.CheckCircle)
     }
-    Actions {
-        if (progress != null) {
-            AppButton("Отменить вход в Яндекс", model::cancelDocument, style = ButtonStyle.Secondary)
-        } else {
-            AppButton(
-                if (model.documentUrl.isEmpty()) "Войти в Яндекс и создать документ" else "Создать другой документ",
-                model::createDocument,
-                leadingResource = AppIcons.Yandex,
-                style = if (model.documentUrl.isEmpty()) ButtonStyle.Primary else ButtonStyle.Secondary,
-                enabled = idle,
-            )
+    if (signIn) {
+        Actions {
+            if (progress != null) {
+                AppButton("Отменить вход в Яндекс", model::cancelDocument, style = ButtonStyle.Secondary)
+            } else {
+                AppButton(
+                    if (model.documentUrl.isEmpty()) "Войти в Яндекс и создать документ" else "Создать другой документ",
+                    model::createDocument,
+                    leadingResource = AppIcons.Yandex,
+                    style = if (model.documentUrl.isEmpty()) ButtonStyle.Primary else ButtonStyle.Secondary,
+                    enabled = idle,
+                )
+            }
         }
+        if (progress != null) {
+            Spacer(Modifier.height(AppTheme.spacing.m))
+            Banner(progress, Tone.Accent, icon = Icons.Rounded.Info)
+        }
+        // The page itself opens in the sign-in window, like on the Accounts tab.
+        Note(
+            "Вход и Диск откроются в окне встроенного браузера, как на вкладке «Аккаунты»: если вход уже сохранён, " +
+                "вводить ничего не придётся. Документ появится в папке openflux на вашем Яндекс Диске с доступом " +
+                "«Редактирование» по ссылке.",
+        )
+        Spacer(Modifier.height(AppTheme.spacing.l))
+        Text("Или свой пустой документ", style = AppTheme.typography.bodyStrong, color = AppTheme.colors.text)
     }
-    if (progress != null) {
-        Spacer(Modifier.height(AppTheme.spacing.m))
-        Banner(progress, Tone.Accent, icon = Icons.Rounded.Info)
-    }
-    // The page itself opens in the sign-in window, like on the Accounts tab.
-    Note(
-        "Вход и Диск откроются в окне встроенного браузера, как на вкладке «Аккаунты»: если вход уже сохранён, " +
-            "вводить ничего не придётся. Документ появится в папке openflux на вашем Яндекс Диске с доступом " +
-            "«Редактирование» по ссылке.",
-    )
-    Spacer(Modifier.height(AppTheme.spacing.l))
-    Text("Или свой пустой документ", style = AppTheme.typography.bodyStrong, color = AppTheme.colors.text)
     Spacer(Modifier.height(AppTheme.spacing.s))
     AppTextField(model.documentInput, { model.documentInput = it.trim() }, placeholder = "https://disk.yandex.ru/edit/d/…",
         monospace = true, enabled = idle, helper = "Ссылка с доступом «Редактирование» из «Поделиться»")
