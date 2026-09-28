@@ -13,6 +13,14 @@ object YandexDisk {
     const val SIGN_IN = "Войдите в аккаунт Яндекса: документ создастся сам"
     const val SIGN_IN_TIMEOUT_MS = 15 * 60 * 1000L
 
+    /** The core's own (transport/yandex volgaUserAgent): Yandex ties a sign-in and a passed check to it. */
+    const val USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:153.0) Gecko/20100101 Firefox/153.0"
+
+    /** Where a Yandex sign-in leaves its cookies; read them all to keep the whole login. */
+    val ACCOUNT_URLS = listOf(
+        "https://passport.yandex.ru/", "https://yandex.ru/", "https://disk.yandex.ru/", "https://docs.yandex.ru/",
+    )
+
     /**
      * The same calls the Disk web client makes: page data holds the CSRF
      * keys (sk for /models-v2, skExternal for /editnew). Returns JSON:
