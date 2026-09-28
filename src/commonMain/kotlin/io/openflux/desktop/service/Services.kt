@@ -134,6 +134,9 @@ interface PlatformServices {
      * release tag.
      */
     suspend fun downloadCore(source: CoreSource): String = throw UnsupportedOperationException("Скачивание ядра здесь не поддерживается")
+
+    /** New cups.online rooms, packed the way the core takes them; throws when none could be opened. */
+    suspend fun newCupsRooms(): String = throw UnsupportedOperationException("Комнаты здесь не создаются")
 }
 
 /**

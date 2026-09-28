@@ -281,6 +281,10 @@ private fun CarrierFields(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AccountDocumentRow(model: ProfilesScreenModel, index: Int, type: TransportType) {
+    if (type == TransportType.CUPSONLINE) {
+        CupsRoomsRow(model, index)
+        return
+    }
     val kind = AccountKind.of(type) ?: return
     val statuses by model.accounts.status.collectAsState()
     val status = statuses[kind] ?: AuthStatus.SignedOut
@@ -364,5 +368,37 @@ private fun IconPicker(selected: String, onSelect: (String) -> Unit) {
                 Icon(painterResource(AppIcons.byName(name)), name, tint = if (isSelected) Color.White else AppTheme.colors.textSecondary, modifier = Modifier.size(20.dp))
             }
         }
+    }
+}
+
+/**
+ * Under a Cups.online field: opens new rooms here, no exit needed first.
+ * The same string goes to the node, which then joins these rooms.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CupsRoomsRow(model: ProfilesScreenModel, index: Int) {
+    val busy = model.documentBusy != null
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(AppTheme.spacing.s),
+        verticalArrangement = Arrangement.spacedBy(AppTheme.spacing.s),
+        itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
+        AppButton(
+            if (model.documentBusy == index) "Создаю комнаты…" else "Сгенерировать комнаты",
+            { model.generateRoomsFor(index) },
+            style = ButtonStyle.Secondary,
+            enabled = !busy,
+            leadingResource = AppIcons.Add,
+        )
+    }
+    Text(
+        "Вход не нужен: OpenFlux откроет 4 комнаты на cups.online. " +
+            "Эту же строку укажите ноде — она зайдёт в эти комнаты, а не создаст свои.",
+        style = AppTheme.typography.caption,
+        color = AppTheme.colors.textSecondary,
+    )
+    if (model.documentError != null && model.documentErrorIndex == index) {
+        Text(model.documentError.orEmpty(), style = AppTheme.typography.bodySmall, color = AppTheme.colors.danger)
     }
 }

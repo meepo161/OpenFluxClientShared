@@ -1,5 +1,19 @@
 package io.openflux.desktop.ui.accounts
 
+import io.openflux.desktop.ui.components.ButtonStyle
+import io.openflux.desktop.ui.components.AppButton
+import io.openflux.desktop.ui.LocalTouchUi
+import io.openflux.desktop.ui.BrowserPage
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.Dialog
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
@@ -33,9 +47,14 @@ fun SignInDialog() {
     val page by accounts.page.collectAsState()
     val status by accounts.status.collectAsState()
     val current = kind ?: return
+    val stepText = (status[current] as? AuthStatus.Busy)?.step.orEmpty()
+    if (LocalTouchUi.current) {
+        FullScreenSignIn(current.label, stepText, page, accounts::cancel)
+        return
+    }
     val window = windowSize()
     val pageHeight = (window.height - 300.dp).coerceIn(220.dp, 680.dp)
-    val step = (status[current] as? AuthStatus.Busy)?.step.orEmpty()
+    val step = stepText
     AppDialog(
         modifier = Modifier.fillUpTo(if (window.width >= 1400.dp) 960.dp else 760.dp),
         title = "Вход в ${current.label}",
@@ -62,6 +81,46 @@ fun SignInDialog() {
             val shown = page
             if (shown != null) LocalBrowserViews.current.Page(shown, Modifier.fillMaxSize())
             else Text(step.ifEmpty { "Открываю страницу входа…" }, style = AppTheme.typography.body, color = AppTheme.colors.textSecondary)
+        }
+    }
+}
+
+/**
+ * On a phone the page gets the whole screen at a steady size: inside a
+ * dialog's scrolling body the keyboard kept resizing it, and the sign-in
+ * page closed its own menus (another way to get the code) as it did.
+ */
+@Composable
+private fun FullScreenSignIn(label: String, step: String, page: BrowserPage?, onClose: () -> Unit) {
+    Dialog(
+        onDismissRequest = onClose,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Column(
+            Modifier.fillMaxSize().background(AppTheme.colors.surface)
+                .windowInsetsPadding(WindowInsets.safeDrawing),
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = AppTheme.spacing.l, vertical = AppTheme.spacing.s),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Вход в $label", style = AppTheme.typography.sectionTitle, color = AppTheme.colors.text)
+                    Text(
+                        step.ifEmpty { "OpenFlux сохранит только сессию; пароль не сохраняется" },
+                        style = AppTheme.typography.caption,
+                        color = AppTheme.colors.textSecondary,
+                        maxLines = 2,
+                    )
+                }
+                Spacer(Modifier.width(AppTheme.spacing.m))
+                AppButton("Отмена", onClose, style = ButtonStyle.Secondary)
+            }
+            Box(Modifier.fillMaxWidth().height(1.dp).background(AppTheme.colors.border))
+            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                if (page != null) LocalBrowserViews.current.Page(page, Modifier.fillMaxSize())
+                else Text("Открываю страницу входа…", style = AppTheme.typography.body, color = AppTheme.colors.textSecondary)
+            }
         }
     }
 }

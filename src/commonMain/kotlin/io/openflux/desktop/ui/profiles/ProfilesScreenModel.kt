@@ -110,6 +110,29 @@ class ProfilesScreenModel(private val container: AppContainer) : ScreenModel {
         }
     }
 
+    /** Opens new cups.online rooms and puts their packed list into the carrier. */
+    fun generateRoomsFor(index: Int) {
+        if (editor == null) return
+        documentBusy = index
+        documentError = null
+        screenModelScope.launch {
+            try {
+                val rooms = platform.newCupsRooms()
+                updateDraft { p ->
+                    if (index == 0) p.copy(value = rooms)
+                    else p.copy(extras = p.extras.mapIndexed { i, e -> if (i == index - 1) e.copy(value = rooms) else e })
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                documentError = e.message ?: "Не получилось создать комнаты"
+                documentErrorIndex = index
+            } finally {
+                documentBusy = null
+            }
+        }
+    }
+
     fun signIn(kind: AccountKind) {
         screenModelScope.launch { runCatching { accounts.signIn(kind) } }
     }
