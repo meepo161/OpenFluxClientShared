@@ -16,6 +16,8 @@ enum class AccountKind(
     val cookieDomain: String,
     val createsDocuments: Boolean,
     val transports: Set<TransportType>,
+    /** Whether a sign-in can be told from its cookies; MAX keeps its token elsewhere. */
+    val signsIn: Boolean = true,
 ) {
     Yandex(
         "Яндекс", "ic_yandex", YandexDisk.START_URL, YandexDisk.DISK_CLIENT, ".yandex.ru", true,
@@ -25,7 +27,7 @@ enum class AccountKind(
         "Mail.ru", "ic_mailru", "https://account.mail.ru/login?page=https%3A%2F%2Fcloud.mail.ru%2Fhome%2F",
         "https://cloud.mail.ru/home", ".mail.ru", false, setOf(TransportType.MAILRU),
     ),
-    Max("MAX", "ic_max", "https://web.max.ru/", "https://web.max.ru/", ".max.ru", false, setOf(TransportType.ONEME));
+    Max("MAX", "ic_max", "https://web.max.ru/", "https://web.max.ru/", ".max.ru", false, setOf(TransportType.ONEME), signsIn = false);
 
     companion object {
         fun of(type: TransportType): AccountKind? = entries.firstOrNull { type in it.transports }

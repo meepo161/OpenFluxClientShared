@@ -83,8 +83,17 @@ class AccountsTest {
     fun signInCancelledWhenPageClosed() = runTest {
         val browser = FakeBrowser().apply { onOpen = { closed = true } }
         val a = testAccounts(this, browser = browser)
-        assertFailsWith<AccountException> { a.signIn(AccountKind.Yandex) }
+        val e = assertFailsWith<AccountException> { a.signIn(AccountKind.Yandex) }
+        assertTrue(e.cancelled)
         assertEquals(AuthStatus.SignedOut, a.statusOf(AccountKind.Yandex))
+    }
+
+    @Test
+    fun maxHasNoBrowserSignIn() = runTest {
+        val browser = FakeBrowser()
+        val e = assertFailsWith<AccountException> { testAccounts(this, browser = browser).signIn(AccountKind.Max) }
+        assertEquals(false, e.cancelled)
+        assertTrue(browser.opened.isEmpty())
     }
 
     @Test

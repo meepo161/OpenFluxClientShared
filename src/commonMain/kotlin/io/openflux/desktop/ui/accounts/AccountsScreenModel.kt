@@ -11,6 +11,7 @@ import io.openflux.desktop.model.NodeDocuments
 import io.openflux.desktop.model.Profile
 import io.openflux.desktop.model.ProfileSource
 import io.openflux.desktop.model.TransportType
+import io.openflux.desktop.service.AccountException
 import io.openflux.desktop.service.AppContainer
 import io.openflux.desktop.ui.components.Tone
 import kotlinx.coroutines.CancellationException
@@ -51,6 +52,8 @@ class AccountsScreenModel(private val container: AppContainer) : ScreenModel {
                 block()
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: AccountException) {
+                if (!e.cancelled) error = e.message
             } catch (e: Exception) {
                 error = e.message ?: "Что-то пошло не так"
             }

@@ -34,5 +34,8 @@ interface AccountBrowser {
     fun close()
 }
 
-/** A failed sign-in or document; [expired] means the saved session no longer works. */
-class AccountException(message: String, val expired: Boolean = false) : Exception(message)
+/**
+ * A failed sign-in or document; [expired] means the saved session no
+ * longer works, [cancelled] that the user closed the page.
+ */
+class AccountException(message: String, val expired: Boolean = false, val cancelled: Boolean = false) : Exception(message)

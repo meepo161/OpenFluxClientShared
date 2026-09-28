@@ -61,13 +61,14 @@ class Accounts(
      * in. [inDialog] false: the caller shows [page] itself (the node wizard).
      */
     suspend fun signIn(kind: AccountKind, inDialog: Boolean = true): AccountSession {
+        if (!kind.signsIn) throw AccountException("Вход в ${kind.label} пока не поддерживается: вставьте токен в профиль")
         set(kind, AuthStatus.Busy("Войдите в аккаунт ${kind.label} во встроенном браузере"))
         _signingIn.value = kind.takeIf { inDialog }
         try {
             browser.open(kind, kind.signInUrl, emptyMap()) { set(kind, AuthStatus.Busy(it)) }
             val deadline = now() + YandexDisk.SIGN_IN_TIMEOUT_MS
             while (true) {
-                if (browser.closed) throw AccountException("Вход в ${kind.label} отменён")
+                if (browser.closed) throw AccountException("Вход в ${kind.label} отменён", cancelled = true)
                 if (now() > deadline) throw AccountException("Время на вход в ${kind.label} вышло")
                 val jar = browser.cookies(kind)
                 if (AccountCookies.signedIn(kind, jar) && browser.url.startsWith(kind.homeUrl)) {
@@ -105,7 +106,7 @@ class Accounts(
             browser.open(kind, kind.homeUrl, session.cookies) { set(kind, AuthStatus.Busy(it)) }
             val deadline = now() + DISK_TIMEOUT_MS
             while (true) {
-                if (browser.closed) throw AccountException("Создание документа отменено")
+                if (browser.closed) throw AccountException("Создание документа отменено", cancelled = true)
                 if (now() > deadline) throw AccountException("Диск не открылся за 2 минуты")
                 val url = browser.url
                 if ("passport.yandex" in url) {
