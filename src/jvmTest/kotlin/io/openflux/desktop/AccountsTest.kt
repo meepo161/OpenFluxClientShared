@@ -80,6 +80,14 @@ class AccountsTest {
     }
 
     @Test
+    fun mailruSignInCountsWhereverThePageIs() = runTest {
+        val jar = mapOf("Mpop" to "1700000000:abc:ivan@mail.ru:")
+        val browser = FakeBrowser().apply { onOpen = { url = "https://id.vk.ru/auth"; this.jar = jar } }
+        val session = testAccounts(this, browser = browser).signIn(AccountKind.Mailru)
+        assertEquals("ivan@mail.ru", session.login)
+    }
+
+    @Test
     fun signInCancelledWhenPageClosed() = runTest {
         val browser = FakeBrowser().apply { onOpen = { closed = true } }
         val a = testAccounts(this, browser = browser)

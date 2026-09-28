@@ -71,7 +71,7 @@ class Accounts(
                 if (browser.closed) throw AccountException("Вход в ${kind.label} отменён", cancelled = true)
                 if (now() > deadline) throw AccountException("Время на вход в ${kind.label} вышло")
                 val jar = browser.cookies(kind)
-                if (AccountCookies.signedIn(kind, jar) && browser.url.startsWith(kind.homeUrl)) {
+                if (AccountCookies.signedIn(kind, jar) && (!kind.waitForHome || browser.url.startsWith(kind.homeUrl))) {
                     val t = now()
                     val session = AccountSession(kind, AccountCookies.login(kind, jar), jar, signedInAt = t, checkedAt = t)
                     repo.save(session)

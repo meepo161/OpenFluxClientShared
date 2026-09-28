@@ -18,6 +18,11 @@ enum class AccountKind(
     val transports: Set<TransportType>,
     /** Whether a sign-in can be told from its cookies; MAX keeps its token elsewhere. */
     val signsIn: Boolean = true,
+    /**
+     * Whether the sign-in counts only once the page is back at [homeUrl]:
+     * Yandex sets its login cookie before the rest of the session.
+     */
+    val waitForHome: Boolean = true,
 ) {
     Yandex(
         "Яндекс", "ic_yandex", YandexDisk.START_URL, YandexDisk.DISK_CLIENT, ".yandex.ru", true,
@@ -26,8 +31,18 @@ enum class AccountKind(
     Mailru(
         "Mail.ru", "ic_mailru", "https://account.mail.ru/login?page=https%3A%2F%2Fcloud.mail.ru%2Fhome%2F",
         "https://cloud.mail.ru/home", ".mail.ru", false, setOf(TransportType.MAILRU),
+        // VK ID may leave the page on its own site after signing in.
+        waitForHome = false,
     ),
     Max("MAX", "ic_max", "https://web.max.ru/", "https://web.max.ru/", ".max.ru", false, setOf(TransportType.ONEME), signsIn = false);
+
+    /** Pages whose cookies together make up the sign-in. */
+    val cookieUrls: List<String>
+        get() = when (this) {
+            Yandex -> YandexDisk.ACCOUNT_URLS
+            Mailru -> listOf("https://account.mail.ru/", "https://mail.ru/", "https://e.mail.ru/", "https://cloud.mail.ru/")
+            Max -> listOf(homeUrl)
+        }
 
     companion object {
         fun of(type: TransportType): AccountKind? = entries.firstOrNull { type in it.transports }
