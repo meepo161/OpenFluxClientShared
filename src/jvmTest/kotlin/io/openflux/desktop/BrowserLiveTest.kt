@@ -1,6 +1,20 @@
 package io.openflux.desktop
 
+import io.openflux.desktop.core.CoreBinary
+import io.openflux.desktop.data.FileAccountRepository
+import io.openflux.desktop.data.HttpSessionProbe
 import io.openflux.desktop.model.AccountKind
+import io.openflux.desktop.model.AppSettings
+import io.openflux.desktop.node.CoreNodeWizard
+import io.openflux.desktop.service.Accounts
+import io.openflux.desktop.service.SettingsRepository
+import io.openflux.desktop.web.KcefPage
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
+import java.nio.file.Files
 import io.openflux.desktop.web.KcefAccountBrowser
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -30,5 +44,34 @@ class BrowserLiveTest {
             println("$kind: ${System.currentTimeMillis() - start} ms url=${browser.url.take(90)} loading=${browser.loading}\n  $probe")
             browser.close()
         }
+    }
+
+    /** The node wizard's "create the document" step, signed out: it must show Yandex's sign-in page. */
+    @Test
+    fun nodeWizardDocumentPageLoads() = runBlocking {
+        if (System.getenv("OPENFLUX_LIVE_BROWSER") != "1") return@runBlocking
+        val accounts = Accounts(
+            FileAccountRepository(Files.createTempDirectory("accounts").toFile()), KcefAccountBrowser(), HttpSessionProbe(),
+            System::currentTimeMillis, CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        )
+        val settings = object : SettingsRepository {
+            override val settings = MutableStateFlow(AppSettings())
+            override fun update(transform: (AppSettings) -> AppSettings) { settings.value = transform(settings.value) }
+        }
+        val wizard = CoreNodeWizard(settings, CoreBinary(), accounts)
+        val job = async(Dispatchers.Default) { runCatching { wizard.createDocument("live-test") { println("  step: $it") } } }
+        val start = System.currentTimeMillis()
+        var url = ""
+        while (System.currentTimeMillis() - start < 30_000) {
+            val page = wizard.documentPage.value as? KcefPage
+            url = page?.url.orEmpty()
+            if (page != null && !page.loading && url.startsWith("https://")) break
+            delay(250)
+        }
+        delay(1000)
+        println("wizard page after ${System.currentTimeMillis() - start} ms: ${url.take(100)}")
+        wizard.cancelDocument()
+        println("createDocument ended: ${job.await().exceptionOrNull()?.message}")
+        wizard.close()
     }
 }
