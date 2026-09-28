@@ -32,7 +32,7 @@ class KcefAccountBrowser : AccountBrowser {
     override suspend fun evaluate(script: String) = current?.evaluate(script) ?: error("Страница закрыта")
 
     override suspend fun cookies(kind: AccountKind): Map<String, String> {
-        val urls = if (kind == AccountKind.Yandex) YandexDisk.ACCOUNT_URLS else listOf(kind.homeUrl, kind.signInUrl)
+        val urls = kind.cookieUrls
         val now = Date()
         val all = urls.flatMap { BuiltInBrowser.cookies(it) }
             .filter { !it.hasExpires || it.expires == null || it.expires.after(now) }
