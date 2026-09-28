@@ -364,7 +364,6 @@ private fun ColumnScope.DocumentStep(model: NodeWizardModel) {
 @Composable
 private fun ColumnScope.VolgaDocument(model: NodeWizardModel) {
     val idle = model.busy == null
-    val page by model.documentPage.collectAsState()
     val progress = model.documentProgress
     SectionLabel("Документ Яндекса")
     if (model.documentUrl.isNotEmpty()) {
@@ -388,21 +387,12 @@ private fun ColumnScope.VolgaDocument(model: NodeWizardModel) {
         Spacer(Modifier.height(AppTheme.spacing.m))
         Banner(progress, Tone.Accent, icon = Icons.Rounded.Info)
     }
-    val shown = page
-    if (shown != null) {
-        Spacer(Modifier.height(AppTheme.spacing.m))
-        Box(
-            Modifier.fillMaxWidth().height((windowSize().height - 200.dp).coerceIn(360.dp, 760.dp)).clip(AppTheme.shapes.card)
-                .border(1.dp, AppTheme.colors.border, AppTheme.shapes.card),
-        ) {
-            LocalBrowserViews.current.Page(shown, Modifier.fillMaxSize())
-        }
-    } else {
-        Note(
-            "Вход откроется прямо здесь, во встроенном браузере. Документ появится в папке openflux на вашем Яндекс Диске " +
-                "с доступом «Редактирование» по ссылке. После этого браузер забывает вход, остаются только cookies для ноды.",
-        )
-    }
+    // The page itself opens in the sign-in window, like on the Accounts tab.
+    Note(
+        "Вход и Диск откроются в окне встроенного браузера, как на вкладке «Аккаунты»: если вход уже сохранён, " +
+            "вводить ничего не придётся. Документ появится в папке openflux на вашем Яндекс Диске с доступом " +
+            "«Редактирование» по ссылке.",
+    )
     Spacer(Modifier.height(AppTheme.spacing.l))
     Text("Или свой пустой документ", style = AppTheme.typography.bodyStrong, color = AppTheme.colors.text)
     Spacer(Modifier.height(AppTheme.spacing.s))

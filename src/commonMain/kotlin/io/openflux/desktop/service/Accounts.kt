@@ -159,14 +159,17 @@ class Accounts(
 
     /**
      * The node wizard's document: created with the Yandex account (signing
-     * in first when needed) on a page the wizard shows itself; [onStep]
-     * gets the progress lines. The returned cookies are the account's.
+     * in first when needed) in the same sign-in window as the Accounts tab
+     * (a steady-size dialog, full screen on a phone: inside the wizard's
+     * scrolling step the page kept being resized and closed its own menus,
+     * such as the one to get the code another way); [onStep] gets the
+     * progress lines. The returned cookies are the account's.
      */
     suspend fun createWizardDocument(fileName: String, onStep: (String) -> Unit): YandexDocument = coroutineScope {
         val kind = AccountKind.Yandex
         val progress = launch { status.collect { (it[kind] as? AuthStatus.Busy)?.let { busy -> onStep(busy.step) } } }
         try {
-            val url = createDocument(kind, fileName, inDialog = false)
+            val url = createDocument(kind, fileName, inDialog = true)
             YandexDocument(url, AccountCookies.header(validSession(kind)?.cookies.orEmpty()))
         } finally {
             progress.cancel()
