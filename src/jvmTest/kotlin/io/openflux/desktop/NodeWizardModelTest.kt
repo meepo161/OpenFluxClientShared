@@ -10,6 +10,7 @@ import io.openflux.desktop.model.KnownServer
 import io.openflux.desktop.model.LogLevel
 import io.openflux.desktop.model.LogLine
 import io.openflux.desktop.model.NewChannel
+import io.openflux.desktop.model.NodeCoreSource
 import io.openflux.desktop.model.NodePlan
 import io.openflux.desktop.model.NodeTransport
 import io.openflux.desktop.model.NodeTransports
@@ -400,6 +401,29 @@ class NodeWizardModelTest {
     }
 
     @Test
+    fun theChosenCoreSourceGoesToTheServer() = runTest {
+        val env = Env()
+        val wizard = NodeWizardModel(env.container, this)
+        env.settings.update { it.copy(knownHostKeys = mapOf("$serverIp:22" to "SHA256:new")) }
+        wizard.host = serverIp
+        wizard.password = "p"
+        assertEquals(NodeCoreSource.Fork, wizard.nodeCore)
+        wizard.connect()
+        advanceUntilIdle()
+        wizard.back()
+        wizard.nodeCore = NodeCoreSource.Official
+        wizard.connect()
+        advanceUntilIdle()
+        assertEquals(listOf(NodeCoreSource.Fork, NodeCoreSource.Official), env.node.sources)
+        // A reconnect after SSH dropped keeps the choice.
+        env.node.dropped = true
+        wizard.documentInput = docUrl
+        wizard.checkDocument()
+        advanceUntilIdle()
+        assertEquals(NodeCoreSource.Official, env.node.sources.last())
+    }
+
+    @Test
     fun transportNames() {
         assertEquals("Direct", NodeTransports.describe(emptyList()))
         assertEquals("Volga, Mail.ru и Direct", NodeTransports.describe(listOf(TransportType.VYANDEX, TransportType.MAILRU)))
@@ -455,7 +479,10 @@ class NodeWizardModelTest {
         var closed = false
         private val codec = JvmShareLinkCodec()
 
-        override suspend fun connect(target: SshTarget): ServerProbe {
+        val sources = mutableListOf<NodeCoreSource>()
+
+        override suspend fun connect(target: SshTarget, source: NodeCoreSource): ServerProbe {
+            sources += source
             if (target.hostKey != "SHA256:new") throw NodeWizardException("новый сервер", hostKey = "SHA256:new", trust = true)
             connects++
             dropped = false

@@ -10,6 +10,7 @@ import io.openflux.desktop.model.ExitAddress
 import io.openflux.desktop.model.KnownServer
 import io.openflux.desktop.model.LogLevel
 import io.openflux.desktop.model.NewChannel
+import io.openflux.desktop.model.NodeCoreSource
 import io.openflux.desktop.model.NodeDocuments
 import io.openflux.desktop.model.NodePlan
 import io.openflux.desktop.model.NodeTransport
@@ -70,6 +71,8 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
     var password by mutableStateOf("")
     var privateKey by mutableStateOf("")
     var passphrase by mutableStateOf("")
+    /** Whose core the server gets and then follows with its updater. */
+    var nodeCore by mutableStateOf(NodeCoreSource.Fork)
     var hostKeyPrompt by mutableStateOf<HostKeyPrompt?>(null)
         private set
     var probe by mutableStateOf<ServerProbe?>(null)
@@ -186,7 +189,7 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
                 true
             } else false
         }) {
-            probe = service.connect(target)
+            probe = service.connect(target, nodeCore)
             this.target = target
             lastServerReply = container.platform.now()
             settings.update { s -> s.copy(knownServers = NodeServers.remember(s.knownServers, KnownServer(host, port, user))) }
@@ -526,7 +529,7 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
     private suspend fun reconnect(target: SshTarget) {
         val previous = busy
         busy = "Подключаюсь к серверу заново…"
-        probe = service.connect(target)
+        probe = service.connect(target, nodeCore)
         lastServerReply = container.platform.now()
         busy = previous
     }

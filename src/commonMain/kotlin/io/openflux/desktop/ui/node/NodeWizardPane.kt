@@ -43,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import io.openflux.desktop.model.NodeCoreSource
 import io.openflux.desktop.model.NodeTransports
 import io.openflux.desktop.model.TransportType
 import io.openflux.desktop.service.LocalAppContainer
@@ -275,6 +276,14 @@ private fun ColumnScope.ServerStep(model: NodeWizardModel) {
         AppTextField(model.password, { model.password = it }, label = "Пароль", secret = true, enabled = idle)
     }
     Note("Пароль и ключ нужны только на время установки: OpenFlux их не сохраняет.")
+    Spacer(Modifier.height(AppTheme.spacing.l))
+    SectionLabel("Ядро на сервере")
+    Spacer(Modifier.height(AppTheme.spacing.s))
+    Segmented(NodeCoreSource.entries, model.nodeCore, { it.label }, { model.nodeCore = it }, enabled = idle)
+    Note(
+        "Нода ставит ядро из релизов ${model.nodeCore.repo} на GitHub и, если включить автообновление, " +
+            "обновляется по ним же. Ядро одно на все каналы сервера: при другом выборе сервер перейдёт на него.",
+    )
     Actions {
         AppButton(if (idle) "Подключиться" else "Подключаюсь…", { model.connect() }, enabled = idle)
     }

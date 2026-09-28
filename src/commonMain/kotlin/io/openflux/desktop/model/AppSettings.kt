@@ -12,9 +12,34 @@ enum class ConnectionMode(val label: String, val description: String) {
     Exit("Выходная нода", "Этот компьютер выпускает в интернет других"),
 }
 
-/** Which core binary runs the connection. */
+/**
+ * Which core binary runs the connection: the one packed with the app, the
+ * newest release downloaded from a core repository ([repo]), or a file of
+ * the user's own.
+ */
 @Serializable
-enum class CoreSource(val label: String) { Bundled("Встроенное ядро"), Custom("Свой файл") }
+enum class CoreSource(val label: String, val repo: String? = null) {
+    Bundled("Встроенное"),
+    Fork("Форк", CoreRepos.FORK),
+    Official("Оригинал", CoreRepos.OFFICIAL),
+    Custom("Свой файл"),
+}
+
+/** The OpenFlux core repositories: this fork and the original. */
+object CoreRepos {
+    const val FORK = "meepo161/OpenFlux"
+    const val OFFICIAL = "p1neappleXpress/OpenFlux"
+}
+
+/**
+ * Whose core the "Своя нода" wizard installs on the server; the node's
+ * updater then follows that repository's releases. [id] is the core's
+ * --node-wizard source.
+ */
+enum class NodeCoreSource(val id: String, val label: String, val repo: String) {
+    Fork("fork", "Форк meepo161", CoreRepos.FORK),
+    Official("official", "Оригинал p1neappleXpress", CoreRepos.OFFICIAL),
+}
 
 /** The Windows proxy settings found before OpenFlux changed them. */
 @Serializable

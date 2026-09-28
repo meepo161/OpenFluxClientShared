@@ -10,6 +10,8 @@ import com.google.zxing.RGBLuminanceSource
 import com.google.zxing.common.HybridBinarizer
 import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
+import io.openflux.desktop.core.CoreBinary
+import io.openflux.desktop.model.CoreSource
 import io.openflux.desktop.service.PlatformServices
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -36,7 +38,8 @@ import javax.imageio.ImageIO
 
 class JvmPlatformServices(
     override val appVersion: String,
-    private val coreVersionProvider: () -> String,
+    private val binary: CoreBinary = CoreBinary(),
+    private val coreVersionProvider: () -> String = binary::version,
 ) : PlatformServices {
     private val os = System.getProperty("os.name").lowercase()
     private val random = SecureRandom()
@@ -124,6 +127,12 @@ class JvmPlatformServices(
         }.getOrNull()
     }
 
+    override val coreDownloadSupported: Boolean get() = true
+
+    override fun downloadedCore(source: CoreSource): String? = binary.downloadedTag(source)
+
+    override suspend fun downloadCore(source: CoreSource): String = withContext(Dispatchers.IO) { binary.download(source) }
+
     private fun decodeQr(image: BufferedImage): String? {
         val pixels = IntArray(image.width * image.height)
         image.getRGB(0, 0, image.width, image.height, pixels, 0, image.width)
@@ -147,7 +156,7 @@ class JvmPlatformServices(
 
     companion object {
         /** Where the desktop releases are published, tagged v1.2.3. */
-        const val RELEASE_REPO = "p1neappleXpress/OpenFluxDesktop"
+        const val RELEASE_REPO = "meepo161/OpenFluxDesktop"
         const val DESKTOP_TAG_PREFIX = "v"
     }
 }

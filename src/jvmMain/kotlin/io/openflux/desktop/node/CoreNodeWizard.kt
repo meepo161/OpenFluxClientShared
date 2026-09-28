@@ -4,6 +4,7 @@ import io.openflux.desktop.core.CoreBinary
 import io.openflux.desktop.model.LogLevel
 import io.openflux.desktop.model.LogLine
 import io.openflux.desktop.model.NewChannel
+import io.openflux.desktop.model.NodeCoreSource
 import io.openflux.desktop.model.NodePlan
 import io.openflux.desktop.model.NodeTransport
 import io.openflux.desktop.model.NodeWizardException
@@ -56,8 +57,9 @@ class CoreNodeWizard(
 
     private class Helper(val process: Process, val input: BufferedWriter, val output: BufferedReader)
 
-    override suspend fun connect(target: SshTarget): ServerProbe {
-        val reply = call("connect", "${target.host}:${target.port} (${target.user})") {
+    override suspend fun connect(target: SshTarget, source: NodeCoreSource): ServerProbe {
+        val reply = call("connect", "${target.host}:${target.port} (${target.user}) core=${source.id}") {
+            put("source", source.id)
             put("host", target.host)
             put("port", target.port)
             put("user", target.user)
@@ -212,7 +214,9 @@ class CoreNodeWizard(
         }
 
     private fun start(): Helper {
-        val core = binary.resolve(settings.settings.value)
+        // The wizard speaks the protocol of the core packed with this app;
+        // a downloaded or custom core may be older.
+        val core = binary.wizardCore(settings.settings.value)
             ?: run {
                 log(LogLevel.Error, "мастер: не найдено ядро OpenFlux")
                 throw NodeWizardException("Не найдено ядро OpenFlux: укажите его в настройках")

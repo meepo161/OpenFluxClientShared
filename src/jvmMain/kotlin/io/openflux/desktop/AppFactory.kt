@@ -18,7 +18,7 @@ fun createAppContainer(appVersion: String): AppContainer {
         profiles = FileProfileRepository(AppDirs.config),
         settings = settings,
         connection = CoreConnectionService(settings, binary),
-        platform = JvmPlatformServices(appVersion) { binary.version() },
+        platform = JvmPlatformServices(appVersion, binary),
         shareCodec = JvmShareLinkCodec(),
         nodeWizard = CoreNodeWizard(settings, binary),
     )

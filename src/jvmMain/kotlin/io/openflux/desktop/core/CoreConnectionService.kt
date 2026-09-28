@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.jsonArray
 import java.io.File
 import java.nio.file.Files
 import java.net.InetSocketAddress
@@ -136,6 +137,7 @@ class CoreConnectionService(
         try {
             val core = binary.resolve(current) ?: throw IllegalStateException(
                 if (current.coreSource == CoreSource.Custom) "Файл ядра не найден: ${current.customCorePath}"
+                else if (current.coreSource.repo != null) "Ядро «${current.coreSource.label}» ещё не скачано: Настройки → Ядро → Скачать"
                 else "В этой сборке нет встроенного ядра: установите релиз с GitHub, соберите приложение с Go " +
                     "(./gradlew соберёт ядро сам) или укажите файл ядра в настройках",
             )
@@ -543,7 +545,62 @@ class CoreBinary {
     fun resolve(settings: AppSettings): File? = when (settings.coreSource) {
         CoreSource.Custom -> File(settings.customCorePath.trim()).takeIf { settings.customCorePath.isNotBlank() && it.isFile }
         CoreSource.Bundled -> bundled()
+        CoreSource.Fork, CoreSource.Official -> downloaded(settings.coreSource)
     }?.let(::runnable)
+
+    /**
+     * The core for the node wizard: the bundled one, whose --node-wizard
+     * protocol matches this app; the chosen one only when there is none.
+     */
+    fun wizardCore(settings: AppSettings): File? = bundled()?.let(::runnable) ?: resolve(settings)
+
+    private fun downloadDir(source: CoreSource): File =
+        File(AppDirs.config, "cores/" + source.repo!!.replace('/', '_'))
+
+    /** The core downloaded for [source] (Fork, Official), null when none. */
+    fun downloaded(source: CoreSource): File? =
+        source.repo?.let { File(downloadDir(source), fileName).takeIf(File::isFile) }
+
+    /** The release tag of [downloaded]. */
+    fun downloadedTag(source: CoreSource): String? =
+        source.repo?.let { File(downloadDir(source), "tag").takeIf(File::isFile)?.readText()?.trim() }
+            ?.takeIf { downloaded(source) != null }
+
+    /**
+     * Downloads the newest v* release core for this OS from [source]'s
+     * repository and keeps it if its SHA-256 is the one the release's
+     * SHA256SUMS.txt names. Returns the release tag.
+     */
+    fun download(source: CoreSource): String {
+        val repo = source.repo ?: throw IllegalArgumentException("$source is not downloaded")
+        val http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15))
+            .followRedirects(HttpClient.Redirect.NORMAL).build()
+        fun get(url: String): HttpResponse<ByteArray> {
+            val response = http.send(
+                HttpRequest.newBuilder(URI(url)).header("User-Agent", "OpenFlux-Desktop").timeout(Duration.ofMinutes(3)).build(),
+                HttpResponse.BodyHandlers.ofByteArray(),
+            )
+            if (response.statusCode() != 200) throw IllegalStateException("GitHub ответил ${response.statusCode()} на $url")
+            return response
+        }
+        val releases = kotlinx.serialization.json.Json.parseToJsonElement(
+            String(get("https://api.github.com/repos/$repo/releases?per_page=30").body(), Charsets.UTF_8),
+        ).jsonArray
+        val asset = CoreReleases.pick(releases, fileName)
+            ?: throw IllegalStateException("В релизах $repo нет ядра $fileName")
+        val want = CoreReleases.sha256(String(get(asset.sumsUrl).body(), Charsets.UTF_8), fileName)
+            ?: throw IllegalStateException("В SHA256SUMS.txt релиза ${asset.tag} нет $fileName")
+        val body = get(asset.url).body()
+        val got = java.security.MessageDigest.getInstance("SHA-256").digest(body).joinToString("") { "%02x".format(it) }
+        if (got != want) throw IllegalStateException("SHA-256 скачанного ядра ${asset.tag} не совпал с SHA256SUMS.txt")
+        val dir = downloadDir(source).apply { mkdirs() }
+        val tmp = File(dir, "$fileName.download")
+        tmp.writeBytes(body)
+        tmp.setExecutable(true, true)
+        Files.move(tmp.toPath(), File(dir, fileName).toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        File(dir, "tag").writeText(asset.tag)
+        return asset.tag
+    }
 
     /**
      * On Linux and macOS the core must be executable. A package may lose the

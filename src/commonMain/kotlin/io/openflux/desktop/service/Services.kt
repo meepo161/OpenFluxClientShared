@@ -4,6 +4,8 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import io.openflux.desktop.model.AppSettings
 import io.openflux.desktop.model.CaptchaPrompt
 import io.openflux.desktop.model.ConnectionState
+import io.openflux.desktop.model.CoreSource
+import io.openflux.desktop.model.NodeCoreSource
 import io.openflux.desktop.model.ExitAddress
 import io.openflux.desktop.model.LogLevel
 import io.openflux.desktop.model.LogLine
@@ -104,6 +106,17 @@ interface PlatformServices {
     fun now(): Long
     /** Newest app release tag on GitHub, null when unknown. */
     suspend fun latestRelease(): String?
+
+    /** Whether [downloadCore] works here (the desktop; Android has its core built in). */
+    val coreDownloadSupported: Boolean get() = false
+    /** The release tag of the core downloaded for [source] (Fork, Official), null when there is none. */
+    fun downloadedCore(source: CoreSource): String? = null
+    /**
+     * Downloads the newest release core for [source] from its repository on
+     * GitHub, checked against the release's SHA256SUMS.txt, and returns the
+     * release tag.
+     */
+    suspend fun downloadCore(source: CoreSource): String = throw UnsupportedOperationException("Скачивание ядра здесь не поддерживается")
 }
 
 /**
@@ -113,8 +126,11 @@ interface PlatformServices {
  * Calls block until done and fail with NodeWizardException.
  */
 interface NodeWizardService {
-    /** SSH in, download the pinned installer and look at the server. */
-    suspend fun connect(target: SshTarget): ServerProbe
+    /**
+     * SSH in, download the pinned installer for [source] (whose core the
+     * node gets and follows) and look at the server.
+     */
+    suspend fun connect(target: SshTarget, source: NodeCoreSource): ServerProbe
     suspend fun newChannel(): NewChannel
     /**
      * What installing [channel] with [transports] (besides direct) would
