@@ -66,6 +66,11 @@ data class AppSettings(
     /** Set while OpenFlux has changed the Windows proxy; restored on exit or next start. */
     val savedSystemProxy: SavedSystemProxy? = null,
     val sidebarCollapsed: Boolean = false,
+    /**
+     * Developer mode: shows the Accounts tab. Turned on by tapping the app
+     * version in Settings → About ten times, off by its switch there.
+     */
+    val developerMode: Boolean = false,
     /** The main window's last size and place, restored on the next start. */
     val window: WindowBounds? = null,
     /** Node wizard: trusted SSH host keys by "host:port". */

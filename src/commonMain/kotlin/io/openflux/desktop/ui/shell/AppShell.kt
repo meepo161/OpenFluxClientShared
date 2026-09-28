@@ -104,6 +104,9 @@ val LocalShell = staticCompositionLocalOf { ShellController() }
 
 val AppTabs: List<Tab> = listOf(HomeTab, ProfilesTab, AccountsTab, LogsTab, SettingsTab)
 
+/** The tabs on show: Accounts only in developer mode. */
+fun visibleTabs(developerMode: Boolean): List<Tab> = if (developerMode) AppTabs else AppTabs - AccountsTab
+
 @Composable
 fun OpenFluxApp(container: AppContainer, scrollbars: Scrollbars, shortcuts: Shortcuts, browsers: BrowserViews = NoBrowserViews) {
     val settings by container.settings.settings.collectAsState()
@@ -156,7 +159,10 @@ private fun AppShell(shell: ShellController, toaster: Toaster) {
                     else -> -1
                 }
                 when {
-                    index >= 0 -> { navigator.current = AppTabs[index]; true }
+                    index >= 0 -> {
+                        visibleTabs(settings.developerMode).getOrNull(index)?.let { navigator.current = it }
+                        true
+                    }
                     event.key == Key.Enter -> {
                         val state = container.connection.state.value
                         if (state.isActive) container.connection.disconnect() else HomeTab.connectSelected(container)
@@ -184,15 +190,18 @@ private fun AppShell(shell: ShellController, toaster: Toaster) {
                     Box(Modifier.fillMaxSize()) { navigator.saveableState("tab", tab) { tab.Content() } }
                 }
             }
+            val tabs = visibleTabs(settings.developerMode)
+            // Developer mode turned off while on Accounts: back to Settings.
+            LaunchedEffect(tabs) { if (navigator.current !in tabs) navigator.current = SettingsTab }
             if (shell.widthClass == WidthClass.Phone) {
                 Column(Modifier.fillMaxSize()) {
                     content(Modifier.weight(1f).fillMaxWidth())
-                    BottomBar(current = navigator.current, tabs = AppTabs, onSelect = { navigator.current = it })
+                    BottomBar(current = navigator.current, tabs = tabs, onSelect = { navigator.current = it })
                 }
             } else Row(Modifier.fillMaxSize()) {
                 Sidebar(
                     current = navigator.current,
-                    tabs = AppTabs,
+                    tabs = tabs,
                     collapsed = collapsed,
                     canExpand = shell.widthClass != WidthClass.Compact,
                     onSelect = { navigator.current = it },

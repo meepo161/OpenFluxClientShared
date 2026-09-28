@@ -399,6 +399,22 @@ class NodeWizardModelTest {
     }
 
     @Test
+    fun developerModeAfterTenTapsOnTheVersion() {
+        val env = Env()
+        val settings = io.openflux.desktop.ui.settings.SettingsScreenModel(env.container)
+        assertEquals(listOf(null, null, null, null), (1..4).map { settings.tapVersion() })
+        assertEquals("Ещё 5 нажатий до режима разработчика", settings.tapVersion())
+        assertEquals("Ещё 2 нажатия до режима разработчика", (1..3).map { settings.tapVersion() }.last())
+        assertEquals("Ещё 1 нажатие до режима разработчика", settings.tapVersion())
+        assertFalse(env.settings.settings.value.developerMode)
+        assertTrue(settings.tapVersion()!!.startsWith("Режим разработчика включён"))
+        assertTrue(env.settings.settings.value.developerMode)
+        assertEquals("Режим разработчика уже включён", settings.tapVersion())
+        assertFalse(io.openflux.desktop.ui.accounts.AccountsTab in io.openflux.desktop.ui.shell.visibleTabs(false))
+        assertTrue(io.openflux.desktop.ui.accounts.AccountsTab in io.openflux.desktop.ui.shell.visibleTabs(true))
+    }
+
+    @Test
     fun transportNames() {
         assertEquals("Direct", NodeTransports.describe(emptyList()))
         assertEquals("Volga, Mail.ru и Direct", NodeTransports.describe(listOf(TransportType.VYANDEX, TransportType.MAILRU)))
