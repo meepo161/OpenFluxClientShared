@@ -59,6 +59,8 @@ import io.openflux.desktop.ui.Shortcuts
 import io.openflux.desktop.ui.components.LocalToaster
 import io.openflux.desktop.ui.components.ToastHost
 import io.openflux.desktop.ui.components.Toaster
+import io.openflux.desktop.ui.accounts.AccountsTab
+import io.openflux.desktop.ui.accounts.SignInDialog
 import io.openflux.desktop.ui.home.HomeTab
 import io.openflux.desktop.ui.logs.LogsTab
 import io.openflux.desktop.ui.profiles.ProfilesTab
@@ -100,7 +102,7 @@ class ShellController {
 
 val LocalShell = staticCompositionLocalOf { ShellController() }
 
-val AppTabs: List<Tab> = listOf(HomeTab, ProfilesTab, LogsTab, SettingsTab)
+val AppTabs: List<Tab> = listOf(HomeTab, ProfilesTab, AccountsTab, LogsTab, SettingsTab)
 
 @Composable
 fun OpenFluxApp(container: AppContainer, scrollbars: Scrollbars, shortcuts: Shortcuts, browsers: BrowserViews = NoBrowserViews) {
@@ -150,6 +152,7 @@ private fun AppShell(shell: ShellController, toaster: Toaster) {
                     Key.Two -> 1
                     Key.Three -> 2
                     Key.Four -> 3
+                    Key.Five -> 4
                     else -> -1
                 }
                 when {
@@ -202,6 +205,7 @@ private fun AppShell(shell: ShellController, toaster: Toaster) {
             val toastGap = if (shell.widthClass == WidthClass.Phone) AppTheme.dimens.bottomBarHeight + AppTheme.spacing.m else AppTheme.spacing.xxl
             ToastHost(toaster, Modifier.align(Alignment.BottomCenter).padding(bottom = toastGap, start = AppTheme.spacing.l, end = AppTheme.spacing.l))
             CaptchaDialog()
+            SignInDialog()
         }
     }
 }
