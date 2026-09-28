@@ -18,7 +18,6 @@ import io.openflux.desktop.model.profile
 import io.openflux.desktop.service.AccountException
 import io.openflux.desktop.service.AppContainer
 import io.openflux.desktop.ui.node.NodeWizardModel
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /** A profile being edited; [isNew] until it is saved once. */
