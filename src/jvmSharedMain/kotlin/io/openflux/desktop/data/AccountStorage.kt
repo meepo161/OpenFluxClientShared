@@ -85,9 +85,11 @@ class HttpSessionProbe(private val urls: Map<AccountKind, String> = DEFAULT_URLS
     companion object {
         val DEFAULT_URLS = mapOf(
             AccountKind.Yandex to "https://disk.yandex.ru/client/disk",
-            AccountKind.Mailru to "https://cloud.mail.ru/home",
+            // Mail answers a signed-out visitor with VK ID's sign-in; Cloud's
+            // /home is a page for anyone and first bounces through auth.mail.ru.
+            AccountKind.Mailru to "https://e.mail.ru/inbox/",
         )
-        private val SIGN_IN_HOSTS = listOf("passport.yandex", "account.mail.ru", "e.mail.ru/login")
+        private val SIGN_IN_HOSTS = listOf("passport.yandex", "account.mail.ru", "e.mail.ru/login", "login.vk.com", "id.vk.ru", "id.vk.com")
     }
 }
 

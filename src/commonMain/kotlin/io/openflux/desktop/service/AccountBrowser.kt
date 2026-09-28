@@ -27,6 +27,9 @@ interface AccountBrowser {
 
     suspend fun evaluate(script: String): String
 
+    /** Sends the open page to [url]. */
+    fun load(url: String)
+
     /** Every cookie of [kind] the browser holds now, the most specific domain winning. */
     suspend fun cookies(kind: AccountKind): Map<String, String>
 

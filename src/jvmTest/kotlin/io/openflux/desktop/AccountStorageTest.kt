@@ -118,6 +118,14 @@ class HttpSessionProbeTest {
     }
 
     @Test
+    fun mailruByMailInbox() {
+        val probe = HttpSessionProbe()
+        assertEquals(ProbeResult.SignedIn, probe.classify(AccountKind.Mailru, 200, "", "<html>"))
+        assertEquals(ProbeResult.Expired, probe.classify(AccountKind.Mailru, 302, "https://login.vk.com/?act=autologin", ""))
+        assertEquals(ProbeResult.Offline, probe.classify(AccountKind.Mailru, 500, "", ""))
+    }
+
+    @Test
     fun offlineWhenNothingListens() = runTest {
         val dead = HttpSessionProbe(mapOf(AccountKind.Yandex to "http://127.0.0.1:1/client/disk"))
         assertEquals(ProbeResult.Offline, dead.probe(AccountKind.Yandex, mapOf("Session_id" to "s")))
