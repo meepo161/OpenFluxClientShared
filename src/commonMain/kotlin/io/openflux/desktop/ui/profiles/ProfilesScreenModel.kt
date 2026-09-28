@@ -15,6 +15,7 @@ import io.openflux.desktop.model.ShareConfig
 import io.openflux.desktop.model.TransportType
 import io.openflux.desktop.model.isActive
 import io.openflux.desktop.model.profile
+import io.openflux.desktop.service.AccountException
 import io.openflux.desktop.service.AppContainer
 import io.openflux.desktop.ui.node.NodeWizardModel
 import kotlinx.coroutines.CancellationException
@@ -102,6 +103,7 @@ class ProfilesScreenModel(private val container: AppContainer) : ScreenModel {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                if ((e as? AccountException)?.cancelled == true) return@launch
                 documentError = e.message ?: "Не получилось создать документ"
                 documentErrorIndex = index
             } finally {

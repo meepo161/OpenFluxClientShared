@@ -124,7 +124,12 @@ private fun AccountCardView(card: AccountCard, model: AccountsScreenModel, now: 
         FlowRow(horizontalArrangement = Arrangement.spacedBy(AppTheme.spacing.s), verticalArrangement = Arrangement.spacedBy(AppTheme.spacing.s)) {
             val kind = card.kind
             when (val status = card.status) {
-                AuthStatus.SignedOut -> AppButton("Войти в ${kind.label}", { model.signIn(kind) })
+                AuthStatus.SignedOut -> if (kind.signsIn) AppButton("Войти в ${kind.label}", { model.signIn(kind) })
+                else Text(
+                    "Вход через MAX пока не поддерживается: токен и ID вставьте в профиль вручную.",
+                    style = AppTheme.typography.bodySmall,
+                    color = AppTheme.colors.textSecondary,
+                )
                 is AuthStatus.Busy, is AuthStatus.Checking -> AppButton("Отмена", model::cancel, style = ButtonStyle.Secondary)
                 is AuthStatus.SignedIn -> {
                     if (kind.createsDocuments) AppButton("Создать документ", { model.createDocument(kind) }, leadingResource = AppIcons.Add)

@@ -300,7 +300,7 @@ private fun AccountDocumentRow(model: ProfilesScreenModel, index: Int, type: Tra
                 else -> "Войти и создать документ"
             }
             AppButton(label, { model.createDocumentFor(index) }, style = ButtonStyle.Secondary, enabled = !busy, leadingResource = AppIcons.Add)
-        } else if (status is AuthStatus.SignedOut || status is AuthStatus.Expired) {
+        } else if (kind.signsIn && (status is AuthStatus.SignedOut || status is AuthStatus.Expired)) {
             AppButton("Войти в ${kind.label}", { model.signIn(kind) }, style = ButtonStyle.Secondary, enabled = !busy)
         }
     }
