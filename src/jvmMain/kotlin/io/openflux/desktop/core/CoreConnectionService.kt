@@ -128,6 +128,7 @@ class CoreConnectionService(
                 val current = synchronized(lock) { run } ?: return@collect
                 if (_state.value !is ConnectionState.Connected || !ownsExit(current)) return@collect
                 for ((kind, session) in sessions) {
+                    if (!kind.opensSignedIn) continue
                     if (session.expired || current.pushed[kind] == session.cookies) continue
                     pushQuietly(current, kind)
                 }
@@ -340,7 +341,7 @@ class CoreConnectionService(
             applySystemProxy()
             if (run.settings.mode == ConnectionMode.Client) refreshExitAddress()
             if (first && ownsExit(run)) scope.launch {
-                accounts.sessions.value.values.filter { !it.expired }.forEach { pushQuietly(run, it.kind) }
+                accounts.sessions.value.values.filter { !it.expired && it.kind.opensSignedIn }.forEach { pushQuietly(run, it.kind) }
             }
         }
     }

@@ -79,6 +79,19 @@ class AccountCookiesTest {
     }
 
     @Test
+    fun seedTakesMailruAccountOutOfItsAnonymousJar() {
+        val url = "https://cloud.mail.ru/public/zMYY/5djxyNJEY"
+        val profile = Profile(id = "p", name = "n", transport = TransportType.MAILRU, value = url)
+        val mail = mapOf("Mpop" to "a:b:ivan@mail.ru:", "t" to "x")
+        val sessions = mapOf(AccountKind.Mailru to AccountSession(AccountKind.Mailru, "ivan@mail.ru", mail, 1, 1))
+        val store = mapOf(url to mail + ("captcha" to "ok"), "other" to mapOf("a" to "b"))
+        val seeded = AccountCookies.seed(store, profile, sessions)
+        assertEquals(mapOf("captcha" to "ok"), seeded[url])
+        assertEquals(mapOf("a" to "b"), seeded["other"])
+        assertNull(AccountCookies.seed(mapOf(url to mail), profile, sessions)[url])
+    }
+
+    @Test
     fun seedSkipsExpiredSessions() {
         val profile = Profile(id = "p", name = "n", value = "https://docs.yandex.ru/edit/d/AAAAAAAAAAAAAAAAAAAA")
         val sessions = mapOf(AccountKind.Yandex to AccountSession(AccountKind.Yandex, "x", yandex, 1, 1, expired = true))
