@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -43,6 +44,7 @@ import io.openflux.desktop.ui.components.LocalToaster
 import io.openflux.desktop.ui.components.QrCode
 import io.openflux.desktop.ui.components.Tone
 import io.openflux.desktop.ui.theme.AppTheme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -64,7 +66,12 @@ fun ImportDialog(model: ProfilesScreenModel) {
         val clip = opened ?: model.clipboardText()
         if (clip.startsWith("openflux://")) text = clip
     }
-    val preview = model.preview(text, source)
+    // The core reads the link; typing settles first.
+    val preview by produceState<ImportPreview>(ImportPreview.Empty, text, source) {
+        value = ImportPreview.Empty
+        if (source == ProfileSource.Link) delay(200)
+        value = model.preview(text, source)
+    }
     val ready = preview as? ImportPreview.Ready
     AppDialog(
         title = "Импорт профиля",
@@ -144,20 +151,22 @@ fun ImportDialog(model: ProfilesScreenModel) {
 @Composable
 fun ShareDialog(model: ProfilesScreenModel, profile: Profile) {
     val toaster = LocalToaster.current
-    val link = remember(profile) { model.shareLink(profile) }
+    // The core makes the link.
+    val made by produceState<Result<String>?>(null, profile) { value = model.shareLink(profile) }
     AppDialog(
         title = "QR и ссылка: ${profile.name}",
         onDismiss = { model.shareFor = null },
         primary = "Копировать ссылку",
-        primaryEnabled = link.isSuccess,
+        primaryEnabled = made?.isSuccess == true,
         onPrimary = {
-            link.onSuccess {
+            made?.onSuccess {
                 model.copy(it)
                 toaster.show("Ссылка скопирована", Tone.Success)
             }
         },
         secondary = "Закрыть",
     ) {
+        val link = made ?: return@AppDialog
         link.fold(
             onSuccess = { value ->
                 val matrix = remember(value) { model.qr(value) }

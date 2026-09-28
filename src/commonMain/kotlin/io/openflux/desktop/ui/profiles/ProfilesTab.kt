@@ -290,9 +290,7 @@ private fun profileActions(model: ProfilesScreenModel, profile: Profile, running
     else MenuAction("Подключить", { model.connect(profile) }, Icons.Rounded.PlayArrow),
     MenuAction("Изменить", { model.startEdit(profile) }, Icons.Rounded.Edit),
     MenuAction("QR и ссылка", { model.shareFor = profile }, Icons.Rounded.QrCode2, enabled = profile.transport.shareable),
-    MenuAction("Копировать ссылку", {
-        model.shareLink(profile).onSuccess(model::copy)
-    }, Icons.Rounded.ContentCopy, enabled = profile.transport.shareable),
+    MenuAction("Копировать ссылку", { model.copyLink(profile) }, Icons.Rounded.ContentCopy, enabled = profile.transport.shareable),
     MenuAction("Дублировать", { model.duplicate(profile) }, Icons.Rounded.FileCopy),
     MenuAction("Удалить", { model.deleteFor = profile }, Icons.Rounded.Delete, danger = true),
 )

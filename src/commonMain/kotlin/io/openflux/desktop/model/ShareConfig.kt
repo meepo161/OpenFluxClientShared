@@ -6,7 +6,8 @@ import kotlinx.serialization.Serializable
 
 /**
  * The JSON inside an `openflux://v1/` link, field for field as the core's
- * share.Config writes it.
+ * share.Config writes it. Only the shape: the core reads, checks and makes
+ * links ([ShareLinkCodec]).
  */
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
@@ -17,24 +18,7 @@ data class ShareConfig(
     val secret: String = "",
     val context: String = "",
     @EncodeDefault val transports: List<ShareTransport> = emptyList(),
-) {
-    /** Mirrors share.Config.Validate in the core. */
-    fun validate() {
-        require(transports.isNotEmpty()) { "В ссылке нет транспортов" }
-        require(transports.size == 1 || negotiate) { "Несколько транспортов требуют режима Session" }
-        require(!negotiate || secret.length >= Profile.MIN_SECRET) { "Для Session нужен ключ не короче ${Profile.MIN_SECRET} символов" }
-        require(secret.isEmpty() || secret.length >= Profile.MIN_SECRET) { "Ключ короче ${Profile.MIN_SECRET} символов" }
-        require(codec.isEmpty() || codec == "batched" || codec == "legacy") { "Неизвестный кодек $codec" }
-        for (t in transports) {
-            val type = TransportType.fromCli(t.type)
-            require(type != null && type.shareable) { "Неизвестный транспорт ${t.type}" }
-            if (type == TransportType.DIRECT) {
-                require(t.dial.isNotBlank()) { "У direct нет адреса ноды" }
-                require(negotiate) { "Direct работает только в режиме Session" }
-            }
-        }
-    }
-}
+)
 
 @Serializable
 data class ShareTransport(
@@ -45,12 +29,24 @@ data class ShareTransport(
     val dial: String = "",
 )
 
-/** Encodes and decodes `openflux://v1/` links (deflate + base64url). */
+/**
+ * Reads and makes `openflux://v1/` links through the core, the one reading
+ * and making every client uses, so a link means the same on every device.
+ * A link the core refuses is a [ShareLinkException].
+ */
 interface ShareLinkCodec {
-    fun encode(config: ShareConfig): String
-    fun decode(link: String): ShareConfig
+    suspend fun encode(config: ShareConfig): String
+    suspend fun decode(link: String): ShareConfig
 
     companion object {
         const val PREFIX = "openflux://v1/"
     }
 }
+
+/**
+ * A link the core would not read or make: [code] is its reason (the core's
+ * share.Code*), [param] the value it is about, [detail] the core's own
+ * English text; the message is the app's words for it.
+ */
+class ShareLinkException(val code: String, val param: String = "", val detail: String = "") :
+    IllegalArgumentException(ShareLinkMessages.text(code, param, detail))

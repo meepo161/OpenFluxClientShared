@@ -1,7 +1,6 @@
 package io.openflux.desktop.ui.node
 
 import io.openflux.desktop.ui.PlatformBackHandler
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -40,14 +39,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.openflux.desktop.model.NodeCoreSource
 import io.openflux.desktop.model.NodeTransports
 import io.openflux.desktop.model.TransportType
 import io.openflux.desktop.service.LocalAppContainer
-import io.openflux.desktop.ui.LocalBrowserViews
 import io.openflux.desktop.ui.LocalScrollbars
 import io.openflux.desktop.ui.components.AppButton
 import io.openflux.desktop.ui.components.AppCard
@@ -66,7 +63,6 @@ import io.openflux.desktop.ui.components.Segmented
 import io.openflux.desktop.ui.components.SwitchRow
 import io.openflux.desktop.ui.components.TextAction
 import io.openflux.desktop.ui.components.Tone
-import io.openflux.desktop.ui.components.windowSize
 import io.openflux.desktop.ui.LocalTouchUi
 import io.openflux.desktop.ui.theme.AppTheme
 
@@ -294,7 +290,6 @@ private fun ColumnScope.ServerStep(model: NodeWizardModel) {
 @Composable
 private fun ColumnScope.DocumentStep(model: NodeWizardModel) {
     val idle = model.busy == null
-    val creating = model.documentProgress != null
     model.probe?.let { probe ->
         AppCard(padding = 0.dp) {
             KeyValueRow("Сервер", "${model.user.trim()}@${model.host.trim()}")
@@ -317,11 +312,11 @@ private fun ColumnScope.DocumentStep(model: NodeWizardModel) {
             "Прямое подключение к серверу (Direct) есть всегда: это резерв и через него идёт проверка.",
     )
     Spacer(Modifier.height(AppTheme.spacing.s))
-    val switchable = idle && !creating
+    val switchable = idle
     AppCard(padding = 0.dp) {
         SwitchRow(
             "Яндекс Документ (Volga)",
-            "Документ на вашем Яндекс Диске: мастер создаст его сам или возьмёт ваш.",
+            "Ссылка на ваш документ на Яндекс Диске с правом редактирования.",
             model.useVolga, { model.useVolga = it }, enabled = switchable,
         )
         HorizontalRule()
@@ -360,41 +355,47 @@ private fun ColumnScope.DocumentStep(model: NodeWizardModel) {
     }
 }
 
-/** The Yandex document: made in the built-in browser, or the user's own. */
+/** The Yandex document: the user's own, checked the way the node will open it. */
 @Composable
 private fun ColumnScope.VolgaDocument(model: NodeWizardModel) {
     val idle = model.busy == null
     val progress = model.documentProgress
-    SectionLabel("Документ Яндекса")
+    val settings by LocalAppContainer.current.settings.settings.collectAsState()
+    // Making the document with a Yandex sign-in is a developer-mode tool,
+    // like the Accounts tab; otherwise the step takes the user's own link.
+    val signIn = settings.developerMode
+    SectionLabel(if (signIn) "Документ Яндекса" else "Свой пустой документ")
     if (model.documentUrl.isNotEmpty()) {
         Spacer(Modifier.height(AppTheme.spacing.s))
         Banner("Документ готов: ${model.documentUrl}", Tone.Success, icon = Icons.Rounded.CheckCircle)
     }
-    Actions {
-        if (progress != null) {
-            AppButton("Отменить вход в Яндекс", model::cancelDocument, style = ButtonStyle.Secondary)
-        } else {
-            AppButton(
-                if (model.documentUrl.isEmpty()) "Войти в Яндекс и создать документ" else "Создать другой документ",
-                model::createDocument,
-                leadingResource = AppIcons.Yandex,
-                style = if (model.documentUrl.isEmpty()) ButtonStyle.Primary else ButtonStyle.Secondary,
-                enabled = idle,
-            )
+    if (signIn) {
+        Actions {
+            if (progress != null) {
+                AppButton("Отменить вход в Яндекс", model::cancelDocument, style = ButtonStyle.Secondary)
+            } else {
+                AppButton(
+                    if (model.documentUrl.isEmpty()) "Войти в Яндекс и создать документ" else "Создать другой документ",
+                    model::createDocument,
+                    leadingResource = AppIcons.Yandex,
+                    style = if (model.documentUrl.isEmpty()) ButtonStyle.Primary else ButtonStyle.Secondary,
+                    enabled = idle,
+                )
+            }
         }
+        if (progress != null) {
+            Spacer(Modifier.height(AppTheme.spacing.m))
+            Banner(progress, Tone.Accent, icon = Icons.Rounded.Info)
+        }
+        // The page itself opens in the sign-in window, like on the Accounts tab.
+        Note(
+            "Вход и Диск откроются в окне встроенного браузера, как на вкладке «Аккаунты»: если вход уже сохранён, " +
+                "вводить ничего не придётся. Документ появится в папке openflux на вашем Яндекс Диске с доступом " +
+                "«Редактирование» по ссылке.",
+        )
+        Spacer(Modifier.height(AppTheme.spacing.l))
+        Text("Или свой пустой документ", style = AppTheme.typography.bodyStrong, color = AppTheme.colors.text)
     }
-    if (progress != null) {
-        Spacer(Modifier.height(AppTheme.spacing.m))
-        Banner(progress, Tone.Accent, icon = Icons.Rounded.Info)
-    }
-    // The page itself opens in the sign-in window, like on the Accounts tab.
-    Note(
-        "Вход и Диск откроются в окне встроенного браузера, как на вкладке «Аккаунты»: если вход уже сохранён, " +
-            "вводить ничего не придётся. Документ появится в папке openflux на вашем Яндекс Диске с доступом " +
-            "«Редактирование» по ссылке.",
-    )
-    Spacer(Modifier.height(AppTheme.spacing.l))
-    Text("Или свой пустой документ", style = AppTheme.typography.bodyStrong, color = AppTheme.colors.text)
     Spacer(Modifier.height(AppTheme.spacing.s))
     AppTextField(model.documentInput, { model.documentInput = it.trim() }, placeholder = "https://disk.yandex.ru/edit/d/…",
         monospace = true, enabled = idle, helper = "Ссылка с доступом «Редактирование» из «Поделиться»")

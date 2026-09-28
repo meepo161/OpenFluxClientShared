@@ -18,6 +18,7 @@ import io.openflux.desktop.model.profile
 import io.openflux.desktop.service.AccountException
 import io.openflux.desktop.service.AppContainer
 import io.openflux.desktop.ui.node.NodeWizardModel
+import kotlinx.coroutines.launch
 
 /** A profile being edited; [isNew] until it is saved once. */
 data class EditorState(val draft: Profile, val isNew: Boolean, val showProblems: Boolean = false)
@@ -203,10 +204,16 @@ class ProfilesScreenModel(private val container: AppContainer) : ScreenModel {
 
     // ---- import ----
 
-    fun preview(text: String, source: ProfileSource = ProfileSource.Link): ImportPreview {
+    /** The core reads the link (off the UI thread: on the desktop it runs the core). */
+    suspend fun preview(text: String, source: ProfileSource = ProfileSource.Link): ImportPreview {
         if (text.isBlank()) return ImportPreview.Empty
-        return runCatching { container.shareCodec.decode(text) }
-            .fold({ ImportPreview.Ready(it, source) }, { ImportPreview.Invalid(it.message ?: "Не удалось прочитать ссылку") })
+        return try {
+            ImportPreview.Ready(container.shareCodec.decode(text), source)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            ImportPreview.Invalid(e.message ?: "Не удалось прочитать ссылку")
+        }
     }
 
     fun clipboardText(): String = platform.clipboardText().orEmpty().trim()
@@ -230,7 +237,21 @@ class ProfilesScreenModel(private val container: AppContainer) : ScreenModel {
 
     // ---- sharing ----
 
-    fun shareLink(profile: Profile): Result<String> = profile.toShare().mapCatching { container.shareCodec.encode(it) }
+    /** The link the core makes for [profile], or why it cannot be shared. */
+    suspend fun shareLink(profile: Profile): Result<String> {
+        val config = profile.toShare().getOrElse { return Result.failure(it) }
+        return try {
+            Result.success(container.shareCodec.encode(config))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    fun copyLink(profile: Profile) {
+        screenModelScope.launch { shareLink(profile).onSuccess(::copy) }
+    }
 
     fun copy(text: String) = platform.setClipboardText(text)
 

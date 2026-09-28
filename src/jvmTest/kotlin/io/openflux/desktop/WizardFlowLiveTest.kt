@@ -4,7 +4,8 @@ import io.openflux.desktop.core.CoreBinary
 import io.openflux.desktop.core.CoreConnectionService
 import io.openflux.desktop.data.FileAccountRepository
 import io.openflux.desktop.data.HttpSessionProbe
-import io.openflux.desktop.data.JvmShareLinkCodec
+import io.openflux.desktop.core.CliCoreLinks
+import io.openflux.desktop.model.CoreShareLinkCodec
 import io.openflux.desktop.model.AppSettings
 import io.openflux.desktop.model.ConnectionMode
 import io.openflux.desktop.model.CoreSource
@@ -54,7 +55,7 @@ class WizardFlowLiveTest {
         val accounts = Accounts(FileAccountRepository(dir), KcefAccountBrowser(), HttpSessionProbe(), System::currentTimeMillis, CoroutineScope(SupervisorJob() + Dispatchers.Default))
         val connection = CoreConnectionService(settings, binary, accounts)
         val service = CoreNodeWizard(settings, binary, accounts)
-        val container = AppContainer(profiles, settings, connection, JvmPlatformServices("test", binary), JvmShareLinkCodec(), service, accounts)
+        val container = AppContainer(profiles, settings, connection, JvmPlatformServices("test") { binary.version() }, CoreShareLinkCodec(CliCoreLinks(settings, binary)), service, accounts)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val wizard = NodeWizardModel(container, scope)
         suspend fun idle(what: String, limitMs: Long = 240_000) {

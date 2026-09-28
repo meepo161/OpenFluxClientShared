@@ -81,19 +81,6 @@ data class Profile(
         }
     }
 
-    /**
-     * The encryption context both peers derive keys from: the imported one,
-     * else what the core derives, the URL of the highest-priority transport
-     * that has one ("http://#" when none does). Cups.online is left out: its
-     * room list only exists once the exit is up.
-     */
-    fun effectiveContext(): String {
-        if (context.isNotBlank()) return context
-        return sessionSpecs().sortedByDescending { it.priority }
-            .firstOrNull { it.type.kind == ValueKind.DocumentUrl && it.type != TransportType.CUPSONLINE && it.value.isNotBlank() }?.value
-            ?: "http://#"
-    }
-
     /** The link another device scans; null with why when it cannot be shared. */
     fun toShare(): Result<ShareConfig> = runCatching {
         require(transport.shareable) { "${transport.label} нельзя передать ссылкой: токен привязан к аккаунту" }
@@ -110,7 +97,9 @@ data class Profile(
             negotiate = session,
             codec = codec.cliName,
             secret = secret,
-            context = if (session) effectiveContext() else "",
+            // An imported context travels on; otherwise the core names the
+            // one both peers derive when it makes the link.
+            context = context,
             transports = transports,
         )
     }
@@ -160,7 +149,8 @@ data class Profile(
                 secret = config.secret,
                 codec = if (config.codec == Codec.LEGACY.cliName) Codec.LEGACY else Codec.BATCHED,
                 session = config.negotiate,
-                priority = main.priority.takeIf { it != 0 } ?: 50,
+                // A lone carrier's link carries no priority: a new profile's.
+                priority = main.priority.takeIf { it != 0 } ?: 100,
                 context = if (config.negotiate) config.context else "",
                 extras = sorted.filter { it !== main }.map { ExtraTransport(type(it), value(it), priority = it.priority) },
                 source = source,

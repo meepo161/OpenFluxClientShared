@@ -43,7 +43,7 @@ class CoreConfigTest {
         assertFalse(secret in conf, "the key goes in its own file, not in the .conf")
         assertEquals(
             listOf(
-                "--config", "C:/rt/p.conf", "--session-context=https://disk.yandex.ru/i/one", "--ipc-socket=C:/rt/ipc.sock",
+                "--config", "C:/rt/p.conf", "--ipc-socket=C:/rt/ipc.sock",
                 "--http-proxy=127.0.0.1:1091",
             ),
             launch.arguments,
@@ -60,7 +60,7 @@ class CoreConfigTest {
         assertTrue("Inbound = tun" in conf)
         assertFalse("Socks5" in conf)
         assertEquals(
-            listOf("--config", "C:/rt/p.conf", "--session-context=https://disk.yandex.ru/i/one", "--ipc-socket=C:/rt/ipc.sock"),
+            listOf("--config", "C:/rt/p.conf", "--ipc-socket=C:/rt/ipc.sock"),
             launch.arguments,
         )
         assertNull(launch.socksAddress)
@@ -125,23 +125,39 @@ class CoreConfigTest {
     }
 
     @Test
+    fun classicRunsAsExit() {
+        val classic = Profile(id = "c", name = "Old", transport = TransportType.YANDEX, value = "https://disk.yandex.ru/i/x", secret = secret)
+        val launch = CoreConfig.build(classic, AppSettings(mode = ConnectionMode.Exit, exitShareHost = "my.host", debugLevel = 1), paths)
+        assertNull(launch.conf)
+        assertEquals(
+            listOf(
+                "--role=exit", "--mode=l4",
+                "--transport=yandex", "--codec=batched", "--url=https://disk.yandex.ru/i/x",
+                "--encryption-key-file=C:/rt/key", "--cookie-store=C:/cfg/cookies/p.json",
+                "--share", "--share-host=my.host", "--debug=1",
+            ),
+            launch.arguments,
+        )
+        assertNull(launch.socksAddress)
+        assertNull(launch.httpProxyAddress)
+        assertFalse(launch.usesIpc)
+    }
+
+    @Test
     fun refusesWhatTheCoreWouldMisread() {
         val cut = session.copy(value = "https://disk.yandex.ru/i/one#frag")
         assertFailsWith<IllegalArgumentException> { CoreConfig.build(cut, AppSettings(), paths) }
-        val classicExit = Profile(id = "c", name = "Old", transport = TransportType.YANDEX, value = "https://disk.yandex.ru/i/x")
-        assertFailsWith<IllegalArgumentException> { CoreConfig.build(classicExit, AppSettings(mode = ConnectionMode.Exit), paths) }
         assertFailsWith<IllegalArgumentException> { CoreConfig.build(session.copy(secret = "short"), AppSettings(), paths) }
     }
 
-    /** The core leaves Cups.online out of the KDF context; the app must too. */
+    /**
+     * The core derives the KDF context by its rule, the one the exit uses:
+     * the app passes one only when the profile carries it (from a link).
+     */
     @Test
-    fun contextSkipsCupsonline() {
-        val cups = session.copy(
-            transport = TransportType.CUPSONLINE, value = "room-a,room-b", priority = 100,
-            extras = listOf(ExtraTransport(TransportType.VYANDEX, "https://disk.yandex.ru/i/two", priority = 90)),
-        )
-        assertEquals("https://disk.yandex.ru/i/two", cups.effectiveContext())
-        assertEquals("http://#", cups.copy(extras = emptyList()).effectiveContext())
-        assertTrue("--session-context=http://#" in CoreConfig.build(cups.copy(extras = emptyList()), AppSettings(), paths).arguments)
+    fun contextOnlyWhenTheProfileHasOne() {
+        assertFalse(CoreConfig.build(session, AppSettings(), paths).arguments.any { it.startsWith("--session-context") })
+        val imported = session.copy(context = "https://disk.yandex.ru/i/node")
+        assertTrue("--session-context=https://disk.yandex.ru/i/node" in CoreConfig.build(imported, AppSettings(), paths).arguments)
     }
 }
