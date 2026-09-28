@@ -29,6 +29,12 @@ enum class AccountKind(
      */
     val finishUrl: String? = null,
     val finishCookie: String? = null,
+    /**
+     * Whether the core opens this service's documents as the signed-in
+     * user. Mail.ru's transport opens its document anonymously, and Cloud
+     * refuses that request (403) when it carries an account's cookies.
+     */
+    val opensSignedIn: Boolean = true,
 ) {
     Yandex(
         "Яндекс", "ic_yandex", YandexDisk.START_URL, YandexDisk.DISK_CLIENT, ".yandex.ru", true,
@@ -41,6 +47,7 @@ enum class AccountKind(
         waitForHome = false,
         finishUrl = "https://cloud.mail.ru/home/",
         finishCookie = "sdcs",
+        opensSignedIn = false,
     ),
     Max("MAX", "ic_max", "https://web.max.ru/", "https://web.max.ru/", ".max.ru", false, setOf(TransportType.ONEME), signsIn = false);
 
@@ -123,7 +130,9 @@ object AccountCookies {
     /**
      * The core's cookie store ({document URL: {name: value}}) with each
      * valid account merged into the jars of the profile's carriers of that
-     * service: the account's cookies win, a passed check's stay. [key] is
+     * service: the account's cookies win, a passed check's stay. For a
+     * service the core opens anonymously the account's cookies are taken
+     * back out instead (earlier versions put them in). [key] is
      * how the core names a carrier's jar: the document URL on the desktop,
      * "type URL" in the Android library.
      */
@@ -139,7 +148,12 @@ object AccountCookies {
             val session = sessions[kind]?.takeUnless { it.expired || it.cookies.isEmpty() } ?: continue
             if (spec.value.isEmpty()) continue
             val name = key(spec)
-            out[name] = out[name].orEmpty() + session.cookies
+            if (kind.opensSignedIn) {
+                out[name] = out[name].orEmpty() + session.cookies
+            } else {
+                val kept = out[name]?.minus(session.cookies.keys) ?: continue
+                if (kept.isEmpty()) out.remove(name) else out[name] = kept
+            }
         }
         return out
     }

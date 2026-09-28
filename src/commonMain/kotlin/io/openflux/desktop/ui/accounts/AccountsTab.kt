@@ -130,7 +130,9 @@ private fun AccountCardView(card: AccountCard, model: AccountsScreenModel, now: 
                     style = AppTheme.typography.bodySmall,
                     color = AppTheme.colors.textSecondary,
                 )
-                is AuthStatus.Busy, is AuthStatus.Checking -> AppButton("Отмена", model::cancel, style = ButtonStyle.Secondary)
+                // A check is one short request; only an open page can be cancelled.
+                is AuthStatus.Checking -> Unit
+                is AuthStatus.Busy -> AppButton("Отмена", model::cancel, style = ButtonStyle.Secondary)
                 is AuthStatus.SignedIn -> {
                     if (kind.createsDocuments) AppButton("Создать документ", { model.createDocument(kind) }, leadingResource = AppIcons.Add)
                     AppButton("Проверить", { model.check(kind) }, style = if (kind.createsDocuments) ButtonStyle.Secondary else ButtonStyle.Primary)
@@ -163,13 +165,20 @@ private fun AccountCardView(card: AccountCard, model: AccountsScreenModel, now: 
         if (created != null && created.kind == card.kind) {
             Spacer(Modifier.height(AppTheme.spacing.m))
             Banner("Документ готов: ${created.url}", Tone.Success, icon = Icons.Rounded.CheckCircle)
+            Spacer(Modifier.height(AppTheme.spacing.xs))
+            Text(
+                "Документ — место встречи клиента и ноды: ноде нужна эта же ссылка и тот же ключ. " +
+                    "Добавьте ссылку в профиль своей ноды или создайте профиль и передайте его ключ ноде.",
+                style = AppTheme.typography.caption,
+                color = AppTheme.colors.textSecondary,
+            )
             Spacer(Modifier.height(AppTheme.spacing.s))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(AppTheme.spacing.s), verticalArrangement = Arrangement.spacedBy(AppTheme.spacing.s)) {
                 AppButton("Создать профиль", {
                     model.createProfileFromDocument()?.let { profile ->
                         shell.focusProfileId = profile.id
                         shell.open(ProfilesTab)
-                        toaster.show("Профиль «${profile.name}» создан", Tone.Success)
+                        toaster.show("Профиль «${profile.name}» создан: ноде нужны тот же документ и ключ", Tone.Success)
                     }
                 })
                 AppButton("Скопировать ссылку", {
