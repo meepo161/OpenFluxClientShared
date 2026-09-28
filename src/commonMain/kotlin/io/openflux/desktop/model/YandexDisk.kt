@@ -50,9 +50,12 @@ object YandexDisk {
     const path = '/disk/openflux/' + name + '.docx';
     let file = await info(path);
     if (!file) {
+      // Disk answers with a redirect to docs.yandex.ru, which creates the
+      // file; a readable (cors) fetch is refused there, so the request goes
+      // no-cors and the file is looked for on Disk below.
       const r = await fetch('/editnew/docx/disk/openflux?sk=' + encodeURIComponent(cfg.skExternal)
-        + '&filename=' + encodeURIComponent(name), {credentials: 'include'});
-      if (!r.ok) throw new Error('создание документа: ' + r.status);
+        + '&filename=' + encodeURIComponent(name), {credentials: 'include', mode: 'no-cors'});
+      if (r.type !== 'opaque' && !r.ok) throw new Error('создание документа: ' + r.status);
       for (let i = 0; i < 30 && !file; i++) { file = await info(path); if (!file) await new Promise(r => setTimeout(r, 500)); }
     }
     if (!file || !file.meta) throw new Error('документ не появился на Диске');

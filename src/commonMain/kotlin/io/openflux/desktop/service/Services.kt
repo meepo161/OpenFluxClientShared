@@ -121,6 +121,9 @@ interface PlatformServices {
     fun now(): Long
     /** Newest app release tag on GitHub, null when unknown. */
     suspend fun latestRelease(): String?
+
+    /** New cups.online rooms, packed the way the core takes them; throws when none could be opened. */
+    suspend fun newCupsRooms(): String = throw UnsupportedOperationException("Комнаты здесь не создаются")
 }
 
 /**
