@@ -111,7 +111,7 @@ class SettingsScreenModel(val container: AppContainer) : ScreenModel {
 
 object SettingsTab : Tab {
     override val options: TabOptions
-        @Composable get() = TabOptions(index = 3u, title = "Настройки", icon = painterResource(AppIcons.Settings))
+        @Composable get() = TabOptions(index = 4u, title = "Настройки", icon = painterResource(AppIcons.Settings))
 
     @Composable
     override fun Content() {

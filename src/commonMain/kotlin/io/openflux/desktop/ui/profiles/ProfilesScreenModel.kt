@@ -1,5 +1,9 @@
 package io.openflux.desktop.ui.profiles
 
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import io.openflux.desktop.model.NodeDocuments
+import io.openflux.desktop.model.AccountKind
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -68,6 +72,44 @@ class ProfilesScreenModel(private val container: AppContainer) : ScreenModel {
     fun startEdit(profile: Profile) {
         selectedId = profile.id
         editor = EditorState(profile, isNew = false)
+    }
+
+    val accounts = container.accounts
+    /** The carrier (0 the main one) whose document is being created. */
+    var documentBusy by mutableStateOf<Int?>(null)
+        private set
+    var documentError by mutableStateOf<String?>(null)
+        private set
+    var documentErrorIndex by mutableStateOf<Int?>(null)
+        private set
+
+    /** Creates a document with the carrier's account and puts its link into the carrier. */
+    fun createDocumentFor(index: Int) {
+        val draft = editor?.draft ?: return
+        val type = if (index == 0) draft.transport else draft.extras.getOrNull(index - 1)?.type ?: return
+        val kind = AccountKind.of(type) ?: return
+        documentBusy = index
+        documentError = null
+        screenModelScope.launch {
+            try {
+                val url = accounts.createDocument(kind, NodeDocuments.fileName(draft.name, "", platform.now()))
+                updateDraft { p ->
+                    if (index == 0) p.copy(value = url)
+                    else p.copy(extras = p.extras.mapIndexed { i, e -> if (i == index - 1) e.copy(value = url) else e })
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                documentError = e.message ?: "Не получилось создать документ"
+                documentErrorIndex = index
+            } finally {
+                documentBusy = null
+            }
+        }
+    }
+
+    fun signIn(kind: AccountKind) {
+        screenModelScope.launch { runCatching { accounts.signIn(kind) } }
     }
 
     fun updateDraft(transform: (Profile) -> Profile) {
