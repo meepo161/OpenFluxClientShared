@@ -21,12 +21,17 @@ class KcefAccountBrowser : AccountBrowser {
 
     override suspend fun open(kind: AccountKind, url: String, cookies: Map<String, String>, onStep: (String) -> Unit) {
         close()
+        // Cookies can be set only once the browser runs, and must be in
+        // place before the page loads. The page is created with its address:
+        // a blank page loaded over right after it was made kept its own
+        // first load (about:blank) and dropped the sign-in page.
+        BuiltInBrowser.ensureStarted(onStep)
         BuiltInBrowser.clearCookies()
-        // The cookies can only be set once the browser runs: open a blank page first.
-        val page = BuiltInBrowser.open("about:blank", onStep = onStep)
         BuiltInBrowser.setCookies("https://${kind.cookieDomain.removePrefix(".")}/", cookies, kind.cookieDomain)
-        page.load(url)
-        _page.value = page
+        // Like the Android app: only Yandex ties a session to the core's user
+        // agent; other sign-in pages (VK ID for Mail.ru) get Chromium's own.
+        val agent = if (kind == AccountKind.Yandex) null else BuiltInBrowser.chromiumUserAgent()
+        _page.value = BuiltInBrowser.open(url, onStep = onStep, userAgent = agent)
     }
 
     override suspend fun evaluate(script: String) = current?.evaluate(script) ?: error("Страница закрыта")
