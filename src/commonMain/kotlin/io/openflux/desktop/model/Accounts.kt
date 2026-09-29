@@ -64,6 +64,29 @@ enum class AccountKind(
     }
 }
 
+/** What an account can create for a carrier: the document or board the peers meet in. */
+enum class DocumentKind(val account: AccountKind, val label: String) {
+    YandexDocument(AccountKind.Yandex, "документ"),
+    YandexBoard(AccountKind.Yandex, "доску"),
+    MailruDocument(AccountKind.Mailru, "документ");
+
+    companion object {
+        /** The kind a carrier of [type] needs; the Volga and Yandex Docs carriers share one document. */
+        fun of(type: TransportType): DocumentKind? = when (type) {
+            TransportType.VYANDEX, TransportType.YANDEX -> YandexDocument
+            TransportType.BOARDS -> YandexBoard
+            TransportType.MAILRU -> MailruDocument
+            else -> null
+        }
+
+        fun of(kind: AccountKind): DocumentKind? = when (kind) {
+            AccountKind.Yandex -> YandexDocument
+            AccountKind.Mailru -> MailruDocument
+            AccountKind.Max -> null
+        }
+    }
+}
+
 /** A saved sign-in. [cookies] never leave accounts.json, the core's cookie store and the user's own nodes. */
 @Serializable
 data class AccountSession(

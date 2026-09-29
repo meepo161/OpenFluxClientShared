@@ -323,6 +323,30 @@ class NodeWizardModelTest {
     }
 
     @Test
+    fun yandexDocsAndBoardAlongsideVolga() = runTest {
+        val env = Env()
+        val wizard = NodeWizardModel(env.container, this)
+        env.settings.update { it.copy(knownHostKeys = mapOf("$serverIp:22" to "SHA256:new")) }
+        wizard.host = serverIp
+        wizard.password = "p"
+        wizard.connect()
+        advanceUntilIdle()
+        wizard.useYandexDocs = true
+        wizard.useBoards = true
+        wizard.boardInput = "https://boards.yandex.ru/whiteboard/?hash=820d6571111dffeb9e85de65ccfc880a&from=x"
+        wizard.createDocument()
+        advanceUntilIdle()
+        assertNull(wizard.error)
+        assertEquals(WizardStep.Plan, wizard.step)
+        val types = env.node.plannedTransports.last().map { it.type }
+        assertEquals(listOf("vyandex", "yandex", "boards"), types)
+        val doc = env.node.plannedTransports.last().first().url
+        assertEquals(doc, env.node.plannedTransports.last()[1].url)
+        assertEquals("https://boards.yandex.ru/whiteboard/?hash=820d6571111dffeb9e85de65ccfc880a", env.node.plannedTransports.last()[2].url)
+        assertTrue(wizard.nodeSignedIn)
+    }
+
+    @Test
     fun goingBackKeepsTheRoomsAndDropsTheSignInWithoutYandex() = runTest {
         val env = Env()
         val wizard = NodeWizardModel(env.container, this)

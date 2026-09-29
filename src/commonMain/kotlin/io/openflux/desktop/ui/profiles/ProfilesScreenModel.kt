@@ -1,5 +1,6 @@
 package io.openflux.desktop.ui.profiles
 
+import io.openflux.desktop.model.DocumentKind
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 import io.openflux.desktop.model.NodeDocuments
@@ -89,12 +90,12 @@ class ProfilesScreenModel(private val container: AppContainer) : ScreenModel {
     fun createDocumentFor(index: Int) {
         val draft = editor?.draft ?: return
         val type = if (index == 0) draft.transport else draft.extras.getOrNull(index - 1)?.type ?: return
-        val kind = AccountKind.of(type) ?: return
+        val doc = DocumentKind.of(type) ?: return
         documentBusy = index
         documentError = null
         screenModelScope.launch {
             try {
-                val url = accounts.createDocument(kind, NodeDocuments.fileName(draft.name, "", platform.now()))
+                val url = accounts.createDocument(doc, NodeDocuments.fileName(draft.name, "", platform.now()))
                 updateDraft { p ->
                     if (index == 0) p.copy(value = url)
                     else p.copy(extras = p.extras.mapIndexed { i, e -> if (i == index - 1) e.copy(value = url) else e })

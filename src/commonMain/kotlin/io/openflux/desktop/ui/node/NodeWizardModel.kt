@@ -1,5 +1,6 @@
 package io.openflux.desktop.ui.node
 
+import io.openflux.desktop.model.DocumentKind
 import io.openflux.desktop.service.AccountException
 import io.openflux.desktop.model.AccountKind
 import androidx.compose.runtime.Stable
@@ -90,9 +91,13 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
     var name by mutableStateOf("")
     /** The carriers besides direct, which every channel has as the backup. */
     var useVolga by mutableStateOf(true)
+    /** The Yandex document again, through the older Yandex Docs carrier. */
+    var useYandexDocs by mutableStateOf(false)
     var useMailru by mutableStateOf(false)
+    var useBoards by mutableStateOf(false)
     var useCups by mutableStateOf(false)
     var mailruInput by mutableStateOf("")
+    var boardInput by mutableStateOf("")
     /** The cups.online rooms made for this channel, kept if the user goes back. */
     private var cupsRooms = ""
     var documentInput by mutableStateOf("")
@@ -238,6 +243,28 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
         service.cancelDocument()
     }
 
+    /** The Yandex document is needed: the Volga or the Yandex Docs carrier is on. */
+    val needsYandexDocument: Boolean get() = useVolga || useYandexDocs
+
+    /**
+     * The channel's Yandex board, made with the saved Yandex account
+     * (signing in first in the Accounts window) and opened to guests as
+     * editors, the way the node's boards carrier joins it.
+     */
+    fun createBoard() {
+        if (channel == null) return
+        launchCall("Открываю Яндекс Доски в окне входа…") {
+            try {
+                val fileName = NodeDocuments.fileName(name, host, container.platform.now())
+                boardInput = container.accounts.createDocument(DocumentKind.YandexBoard, fileName)
+                service.note("мастер: доска создана", LogLevel.Info)
+            } catch (e: AccountException) {
+                if (e.cancelled) return@launchCall
+                throw NodeWizardException(e.message ?: "Не получилось создать доску")
+            }
+        }
+    }
+
     /**
      * The channel's Mail.ru document, made with the saved Mail.ru account
      * (signing in first in the Accounts window): published, open to editing
@@ -290,15 +317,22 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
      */
     private suspend fun proceed() {
         val chosen = mutableListOf<NodeTransport>()
-        if (useVolga) {
-            if (documentUrl.isEmpty()) throw NodeWizardException("Создайте документ Яндекса или вставьте ссылку на свой")
-            chosen += NodeTransport(TransportType.VYANDEX.cliName, documentUrl)
+        if (needsYandexDocument && documentUrl.isEmpty()) {
+            throw NodeWizardException("Создайте документ Яндекса или вставьте ссылку на свой")
         }
+        if (useVolga) chosen += NodeTransport(TransportType.VYANDEX.cliName, documentUrl)
+        if (useYandexDocs) chosen += NodeTransport(TransportType.YANDEX.cliName, documentUrl)
         if (useMailru) {
             val link = NodeTransports.cleanMailru(mailruInput)
                 ?: throw NodeWizardException("Нужна публичная ссылка Mail.ru вида https://cloud.mail.ru/public/…/…")
             mailruInput = link
             chosen += NodeTransport(TransportType.MAILRU.cliName, link)
+        }
+        if (useBoards) {
+            val link = NodeTransports.cleanBoard(boardInput)
+                ?: throw NodeWizardException("Нужна ссылка на доску вида https://boards.yandex.ru/whiteboard/?hash=…")
+            boardInput = link
+            chosen += NodeTransport(TransportType.BOARDS.cliName, link)
         }
         if (useCups) {
             if (cupsRooms.isEmpty()) {
@@ -314,7 +348,8 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
     }
 
     /** The node gets the Yandex sign-in only for a Yandex document it has. */
-    private val withCookies: Boolean get() = yandexCookies.isNotEmpty() && transports.any { it.type == TransportType.VYANDEX.cliName }
+    private val withCookies: Boolean get() = yandexCookies.isNotEmpty() &&
+        transports.any { it.type == TransportType.VYANDEX.cliName || it.type == TransportType.YANDEX.cliName }
 
     private suspend fun askPlan() {
         busy = "Спрашиваю сервер, что изменится…"

@@ -59,13 +59,16 @@ data class NodeTransport(val type: String, val url: String) {
 
 object NodeTransports {
     /** What the wizard offers besides direct, in the node's priority order. */
-    val offered = listOf(TransportType.VYANDEX, TransportType.MAILRU, TransportType.CUPSONLINE)
+    val offered = listOf(TransportType.VYANDEX, TransportType.YANDEX, TransportType.MAILRU, TransportType.BOARDS, TransportType.CUPSONLINE)
 
     private val MAILRU_URL = Regex("""^https://cloud\.mail\.ru/public/[A-Za-z0-9_-]{2,64}/[A-Za-z0-9_-]{2,128}$""")
 
     /** A Mail.ru public document link without query, fragment or trailing slash; null if it is not one. */
     fun cleanMailru(url: String): String? =
         url.trim().replace(Regex("[?#].*$"), "").trimEnd('/').takeIf(MAILRU_URL::matches)
+
+    /** A Yandex board link with only its hash; null if it is not one. */
+    fun cleanBoard(url: String): String? = YandexBoards.clean(url)
 
     /** How the wizard names [types] for people, primary first: "Volga, Mail.ru и Direct". */
     fun describe(types: List<TransportType>): String {

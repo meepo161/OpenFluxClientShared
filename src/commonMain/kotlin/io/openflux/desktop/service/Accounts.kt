@@ -1,5 +1,7 @@
 package io.openflux.desktop.service
 
+import io.openflux.desktop.model.YandexBoards
+import io.openflux.desktop.model.DocumentKind
 import io.openflux.desktop.model.AccountCookies
 import io.openflux.desktop.model.AccountKind
 import io.openflux.desktop.model.AccountSession
@@ -104,13 +106,18 @@ class Accounts(
      * user (signing in first when there is no working session), and
      * returns its link.
      */
-    suspend fun createDocument(kind: AccountKind, fileName: String, inDialog: Boolean = true): String {
+    suspend fun createDocument(kind: AccountKind, fileName: String, inDialog: Boolean = true): String =
+        createDocument(DocumentKind.of(kind) ?: throw AccountException("${kind.label} не создаёт документы"), fileName, inDialog)
+
+    /** Creates a [doc] (a document, or a board) with its account; see [createDocument]. */
+    suspend fun createDocument(doc: DocumentKind, fileName: String, inDialog: Boolean = true): String {
+        val kind = doc.account
         if (!kind.createsDocuments) {
             throw AccountException("${kind.label} пока не умеет создавать документы сам — вставьте ссылку вручную")
         }
         require(Regex("^[a-z0-9-]{1,64}$").matches(fileName)) { "Неверное имя документа" }
         val session = validSession(kind) ?: signIn(kind, inDialog)
-        val maker = DocumentMaker.of(kind)
+        val maker = DocumentMaker.of(doc)
         set(kind, AuthStatus.Busy("Открываю ${maker.place}…"))
         _signingIn.value = kind.takeIf { inDialog }
         try {
@@ -244,17 +251,20 @@ internal class DocumentMaker(
     val clean: (String) -> String?,
 ) {
     companion object {
-        fun of(kind: AccountKind): DocumentMaker = when (kind) {
-            AccountKind.Yandex -> DocumentMaker(
+        fun of(doc: DocumentKind): DocumentMaker = when (doc) {
+            DocumentKind.YandexDocument -> DocumentMaker(
                 "Яндекс Диск", YandexDisk.DISK_CLIENT, YandexDisk.DISK_CLIENT,
                 listOf("passport.yandex"), YandexDisk::script, NodeDocuments::clean,
             )
-            AccountKind.Mailru -> DocumentMaker(
+            DocumentKind.YandexBoard -> DocumentMaker(
+                "Яндекс Доски", YandexBoards.CABINET, YandexBoards.SITE,
+                listOf("passport.yandex"), YandexBoards::script, YandexBoards::clean,
+            )
+            DocumentKind.MailruDocument -> DocumentMaker(
                 "Облако Mail", MailruCloud.HOME, MailruCloud.HOME,
                 // Cloud comes back with autologin=no when Mail did not let the session in.
                 listOf("account.mail.ru/login", "id.vk.ru", "login.vk.com", "autologin=no"), MailruCloud::script, MailruCloud::clean,
             )
-            AccountKind.Max -> throw AccountException("MAX не создаёт документы")
         }
     }
 }

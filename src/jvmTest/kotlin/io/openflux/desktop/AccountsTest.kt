@@ -1,5 +1,7 @@
 package io.openflux.desktop
 
+import io.openflux.desktop.model.YandexBoards
+import io.openflux.desktop.model.DocumentKind
 import io.openflux.desktop.model.AccountKind
 import io.openflux.desktop.model.AccountSession
 import io.openflux.desktop.model.AuthStatus
@@ -99,6 +101,19 @@ class AccountsTest {
         assertEquals("ivan@mail.ru", session.login)
         assertEquals(listOf("https://cloud.mail.ru/home/"), browser.loaded)
         assertEquals("x", session.cookies["sdcs"])
+    }
+
+    @Test
+    fun boardIsMadeOnTheBoardsCabinet() = runTest {
+        val login = mapOf("Session_id" to "s", "yandex_login" to "ivan")
+        val repo = MemoryAccounts().apply { save(AccountSession(AccountKind.Yandex, "ivan", login, 1, 1)) }
+        val browser = FakeBrowser().apply {
+            onOpen = { url = "https://boards.yandex.ru/cabinet/" }
+            script = { """{"state":"done","url":"https://boards.yandex.ru/whiteboard/?hash=820d6571111dffeb9e85de65ccfc880a"}""" }
+        }
+        val url = testAccounts(this, repo, browser).createDocument(DocumentKind.YandexBoard, "board")
+        assertEquals("https://boards.yandex.ru/whiteboard/?hash=820d6571111dffeb9e85de65ccfc880a", url)
+        assertEquals(YandexBoards.CABINET, browser.opened.single().first)
     }
 
     @Test

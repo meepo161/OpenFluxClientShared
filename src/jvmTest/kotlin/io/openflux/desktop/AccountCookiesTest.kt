@@ -1,5 +1,7 @@
 package io.openflux.desktop
 
+import io.openflux.desktop.model.YandexBoards
+import io.openflux.desktop.model.DocumentKind
 import io.openflux.desktop.model.AccountCookies
 import io.openflux.desktop.model.AccountKind
 import io.openflux.desktop.model.AccountSession
@@ -24,6 +26,24 @@ class AccountCookiesTest {
         assertEquals(AccountKind.Max, AccountKind.of(TransportType.ONEME))
         assertNull(AccountKind.of(TransportType.CUPSONLINE))
         assertNull(AccountKind.of(TransportType.DIRECT))
+    }
+
+    @Test
+    fun documentKindsByTransport() {
+        assertEquals(DocumentKind.YandexDocument, DocumentKind.of(TransportType.VYANDEX))
+        assertEquals(DocumentKind.YandexDocument, DocumentKind.of(TransportType.YANDEX))
+        assertEquals(DocumentKind.YandexBoard, DocumentKind.of(TransportType.BOARDS))
+        assertEquals(DocumentKind.MailruDocument, DocumentKind.of(TransportType.MAILRU))
+        assertNull(DocumentKind.of(TransportType.CUPSONLINE))
+    }
+
+    @Test
+    fun boardLinks() {
+        val board = "https://boards.yandex.ru/whiteboard/?hash=820d6571111dffeb9e85de65ccfc880a"
+        assertEquals(board, YandexBoards.clean("$board&from=cabinet#slide"))
+        assertEquals(board, YandexBoards.clean("https://boards.yandex.ru/whiteboard/?from=x&hash=820d6571111dffeb9e85de65ccfc880a"))
+        assertNull(YandexBoards.clean("https://evil.example/whiteboard/?hash=820d6571111dffeb9e85de65ccfc880a"))
+        assertNull(YandexBoards.clean("https://boards.yandex.ru/cabinet/"))
     }
 
     @Test

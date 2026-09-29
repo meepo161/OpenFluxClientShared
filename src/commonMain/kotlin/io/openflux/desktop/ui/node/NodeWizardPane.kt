@@ -321,9 +321,21 @@ private fun ColumnScope.DocumentStep(model: NodeWizardModel) {
         )
         HorizontalRule()
         SwitchRow(
+            "Yandex Docs",
+            "Тот же документ Яндекса через прежний транспорт Yandex Docs.",
+            model.useYandexDocs, { model.useYandexDocs = it }, enabled = switchable,
+        )
+        HorizontalRule()
+        SwitchRow(
             "Mail.ru Документы",
             "Публичная ссылка на ваш документ в Облаке Mail.ru с правом редактирования.",
             model.useMailru, { model.useMailru = it }, enabled = switchable,
+        )
+        HorizontalRule()
+        SwitchRow(
+            "Яндекс Доска",
+            "Доска Яндекс Досок, открытая гостям на редактирование.",
+            model.useBoards, { model.useBoards = it }, enabled = switchable,
         )
         HorizontalRule()
         SwitchRow(
@@ -363,12 +375,37 @@ private fun ColumnScope.DocumentStep(model: NodeWizardModel) {
             monospace = true, enabled = idle, helper = "Облако Mail.ru → документ → «Поделиться» → доступ по ссылке с редактированием")
     }
 
-    if (model.useVolga) {
+    if (model.useBoards) {
+        Spacer(Modifier.height(AppTheme.spacing.l))
+        SectionLabel("Доска Яндекса")
+        Spacer(Modifier.height(AppTheme.spacing.s))
+        if (model.boardInput.isNotEmpty()) {
+            Banner("Доска готова: ${model.boardInput}", Tone.Success, icon = Icons.Rounded.CheckCircle)
+            Spacer(Modifier.height(AppTheme.spacing.s))
+        }
+        Actions {
+            AppButton(
+                if (model.boardInput.isEmpty()) "Войти в Яндекс и создать доску" else "Создать другую доску",
+                model::createBoard,
+                leadingResource = AppIcons.Yandex,
+                style = if (model.boardInput.isEmpty()) ButtonStyle.Primary else ButtonStyle.Secondary,
+                enabled = idle,
+            )
+        }
+        Note("Доска появится в ваших Яндекс Досках с доступом гостям на редактирование.")
+        Spacer(Modifier.height(AppTheme.spacing.l))
+        Text("Или своя доска", style = AppTheme.typography.bodyStrong, color = AppTheme.colors.text)
+        Spacer(Modifier.height(AppTheme.spacing.s))
+        AppTextField(model.boardInput, { model.boardInput = it.trim() }, placeholder = "https://boards.yandex.ru/whiteboard/?hash=…",
+            monospace = true, enabled = idle, helper = "«Поделиться» → гостевой доступ с правом редактирования")
+    }
+
+    if (model.needsYandexDocument) {
         Spacer(Modifier.height(AppTheme.spacing.l))
         VolgaDocument(model)
     }
 
-    if (!model.useVolga || model.documentUrl.isNotEmpty()) {
+    if (!model.needsYandexDocument || model.documentUrl.isNotEmpty()) {
         Actions {
             AppButton(if (idle) "Далее" else "Подождите…", model::next, enabled = idle)
         }

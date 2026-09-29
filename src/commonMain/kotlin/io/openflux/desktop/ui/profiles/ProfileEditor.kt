@@ -1,5 +1,6 @@
 package io.openflux.desktop.ui.profiles
 
+import io.openflux.desktop.model.DocumentKind
 import androidx.compose.runtime.collectAsState
 import io.openflux.desktop.model.AccountKind
 import io.openflux.desktop.model.AuthStatus
@@ -297,11 +298,12 @@ private fun AccountDocumentRow(model: ProfilesScreenModel, index: Int, type: Tra
     ) {
         StatusBadge("${kind.label}: ${text.replaceFirstChar { it.lowercase() }}", tone)
         if (kind.createsDocuments) {
+            val what = DocumentKind.of(type)?.label ?: "документ"
             val label = when {
-                model.documentBusy == index -> "Создаю документ…"
-                status is AuthStatus.SignedIn -> "Создать документ"
+                model.documentBusy == index -> "Создаю $what…"
+                status is AuthStatus.SignedIn -> "Создать $what"
                 status is AuthStatus.Expired -> "Войти заново и создать"
-                else -> "Войти и создать документ"
+                else -> "Войти и создать $what"
             }
             AppButton(label, { model.createDocumentFor(index) }, style = ButtonStyle.Secondary, enabled = !busy, leadingResource = AppIcons.Add)
         } else if (kind.signsIn && (status is AuthStatus.SignedOut || status is AuthStatus.Expired)) {
