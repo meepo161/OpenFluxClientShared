@@ -339,6 +339,26 @@ private fun ColumnScope.DocumentStep(model: NodeWizardModel) {
         Spacer(Modifier.height(AppTheme.spacing.l))
         SectionLabel("Документ Mail.ru")
         Spacer(Modifier.height(AppTheme.spacing.s))
+        if (model.mailruInput.isNotEmpty()) {
+            Banner("Документ готов: ${model.mailruInput}", Tone.Success, icon = Icons.Rounded.CheckCircle)
+            Spacer(Modifier.height(AppTheme.spacing.s))
+        }
+        Actions {
+            AppButton(
+                if (model.mailruInput.isEmpty()) "Войти в Mail.ru и создать документ" else "Создать другой документ",
+                model::createMailruDocument,
+                leadingResource = AppIcons.byName("ic_mailru"),
+                style = if (model.mailruInput.isEmpty()) ButtonStyle.Primary else ButtonStyle.Secondary,
+                enabled = idle,
+            )
+        }
+        Note(
+            "Вход откроется в окне встроенного браузера, как на вкладке «Аккаунты»: если вход уже сохранён, вводить " +
+                "ничего не придётся. Документ появится в папке openflux в Облаке с редактированием по ссылке.",
+        )
+        Spacer(Modifier.height(AppTheme.spacing.l))
+        Text("Или свой документ", style = AppTheme.typography.bodyStrong, color = AppTheme.colors.text)
+        Spacer(Modifier.height(AppTheme.spacing.s))
         AppTextField(model.mailruInput, { model.mailruInput = it.trim() }, placeholder = "https://cloud.mail.ru/public/…",
             monospace = true, enabled = idle, helper = "Облако Mail.ru → документ → «Поделиться» → доступ по ссылке с редактированием")
     }
@@ -360,10 +380,9 @@ private fun ColumnScope.DocumentStep(model: NodeWizardModel) {
 private fun ColumnScope.VolgaDocument(model: NodeWizardModel) {
     val idle = model.busy == null
     val progress = model.documentProgress
-    val settings by LocalAppContainer.current.settings.settings.collectAsState()
-    // Making the document with a Yandex sign-in is a developer-mode tool,
-    // like the Accounts tab; otherwise the step takes the user's own link.
-    val signIn = settings.developerMode
+    // The document is made with the Yandex sign-in, saved in the Accounts
+    // window; the user's own link stays as the other way.
+    val signIn = true
     SectionLabel(if (signIn) "Документ Яндекса" else "Свой пустой документ")
     if (model.documentUrl.isNotEmpty()) {
         Spacer(Modifier.height(AppTheme.spacing.s))

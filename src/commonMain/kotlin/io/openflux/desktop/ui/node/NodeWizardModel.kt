@@ -1,5 +1,7 @@
 package io.openflux.desktop.ui.node
 
+import io.openflux.desktop.service.AccountException
+import io.openflux.desktop.model.AccountKind
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -234,6 +236,25 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
 
     fun cancelDocument() {
         service.cancelDocument()
+    }
+
+    /**
+     * The channel's Mail.ru document, made with the saved Mail.ru account
+     * (signing in first in the Accounts window): published, open to editing
+     * by link, checked the way the node will open it.
+     */
+    fun createMailruDocument() {
+        if (channel == null) return
+        launchCall("Открываю Облако Mail в окне входа…") {
+            try {
+                val fileName = NodeDocuments.fileName(name, host, container.platform.now())
+                mailruInput = container.accounts.createDocument(AccountKind.Mailru, fileName)
+                service.note("мастер: документ Mail.ru создан", LogLevel.Info)
+            } catch (e: AccountException) {
+                if (e.cancelled) return@launchCall
+                throw NodeWizardException(e.message ?: "Не получилось создать документ Mail.ru")
+            }
+        }
     }
 
     fun checkDocument() {
