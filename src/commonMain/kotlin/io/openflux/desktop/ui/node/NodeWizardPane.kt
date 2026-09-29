@@ -183,8 +183,11 @@ private fun Header(model: NodeWizardModel, onClose: () -> Unit) {
         WizardStep.Document -> "Транспорты канала" to "Через что устройство и нода будут обмениваться зашифрованным трафиком."
         WizardStep.Plan -> "Будут изменения" to "На сервере будет сделано только это."
         WizardStep.Verify -> "Проверка канала" to "Подключаюсь к новой ноде и открываю сайт через неё."
-        WizardStep.Done -> "Нода готова" to if (model.verifiedIp.isEmpty()) "Канал установлен, но проверка не завершена."
-            else "Трафик выходит в интернет с адреса ${model.verifiedIp}."
+        WizardStep.Done -> "Нода готова" to when {
+            model.verifiedIp.isNotEmpty() -> "Трафик выходит в интернет с адреса ${model.verifiedIp}."
+            model.sessionProven -> "Нода ответила по защищённому каналу. Адрес выхода в режиме VPN видно в браузере: api.ipify.org."
+            else -> "Канал установлен, но проверка не завершена."
+        }
     }
     Row(verticalAlignment = Alignment.Top) {
         if (model.step == WizardStep.Document || model.step == WizardStep.Plan) {
@@ -566,7 +569,7 @@ private fun ColumnScope.VerifyStep(model: NodeWizardModel) {
 @Composable
 private fun ColumnScope.DoneStep(model: NodeWizardModel, onShowQr: () -> Unit, onSaved: (String) -> Unit, onClose: () -> Unit) {
     val toaster = LocalToaster.current
-    if (model.verifiedIp.isNotEmpty() && !model.primaryUp) {
+    if ((model.verifiedIp.isNotEmpty() || model.sessionProven) && !model.primaryUp) {
         Banner(
             "Сейчас работает резервный канал (прямое подключение к серверу). Канал через ${model.primaryType?.shortLabel.orEmpty()} ещё не поднялся" +
                 if (model.primaryType == TransportType.VYANDEX) ": когда нода попросит проверку, OpenFlux покажет её, пройдите её." else ": OpenFlux переключится на него, когда он заработает.",

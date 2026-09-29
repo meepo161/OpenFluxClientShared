@@ -155,7 +155,7 @@ class CoreConnectionService(
         check(run.settings.mode == ConnectionMode.Client && run.usesIpc) { "Передать вход можно только ноде профиля Session" }
         val ipc = run.ipc ?: throw IllegalStateException("Нет связи с ядром")
         val session = accounts.validSession(kind) ?: throw IllegalStateException("Сначала войдите в ${kind.label}")
-        val names = run.profile.sessionSpecs().filter { AccountKind.of(it.type) == kind }.map { it.name }
+        val names = run.profile.sessionSpecs().filter { it.type in kind.signedInTransports }.map { it.name }
         check(names.isNotEmpty()) { "В профиле нет транспортов ${kind.label}" }
         names.forEach { ipc.offerCookies(IpcCookiesOffer(it, session.cookies, remote = true)) }
         run.pushed[kind] = session.cookies

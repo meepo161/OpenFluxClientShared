@@ -140,6 +140,13 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
         private set
     var verifiedIp by mutableStateOf("")
         private set
+    /**
+     * The new node answered the Session (its key and document are right),
+     * though this device could not ask where the traffic leaves: Android
+     * keeps the app out of its own VPN.
+     */
+    var sessionProven by mutableStateOf(false)
+        private set
     var primaryUp by mutableStateOf(false)
         private set
     var verifyFailed by mutableStateOf<String?>(null)
@@ -421,6 +428,7 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
         step = WizardStep.Verify
         verifyFailed = null
         verifiedIp = ""
+        sessionProven = false
         primaryUp = false
         stopWaitingForPrimary = false
         if (settings.settings.value.mode != ConnectionMode.Client) {
@@ -430,13 +438,17 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
         busy = "Подключаюсь к новой ноде…"
         try {
             val expected = service.resolve(host.trim())
+            // connect() works in the background: until the state changes,
+            // what shows is the previous attempt (a Failed of this same
+            // profile ended a retry at once with the old error).
+            val before = connection.state.value
             connection.connect(candidate)
             val deadline = container.platform.now() + VERIFY_TIMEOUT_MS
             // connect() is asynchronous: the previous connection may still
             // show until the new one starts.
             var started = false
             var lastProblem = ""
-            while (verifiedIp.isEmpty()) {
+            while (verifiedIp.isEmpty() && !sessionProven) {
                 if (stopWaitingForPrimary) throw NodeWizardException("Проверка остановлена: нода пока не ответила")
                 if (container.platform.now() > deadline) {
                     throw NodeWizardException(
@@ -445,7 +457,7 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
                     )
                 }
                 val state = connection.state.value
-                if (state.profile?.id == candidate.id) started = true
+                if (state !== before && state.profile?.id == candidate.id) started = true
                 else if (started) throw NodeWizardException("Проверку прервало отключение или другое подключение")
                 when {
                     !started -> Unit
@@ -463,6 +475,7 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
                                 }
                                 verifiedIp = address.ip
                             }
+                            is ExitAddress.NotCheckable -> sessionProven = true
                             is ExitAddress.Unavailable -> {
                                 // Like the Android wizard: the carrier may need a
                                 // moment (or a passed check); try until the deadline.
@@ -474,7 +487,7 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
                         }
                     }
                 }
-                if (verifiedIp.isEmpty()) delay(POLL_MS)
+                if (verifiedIp.isEmpty() && !sessionProven) delay(POLL_MS)
             }
             // Traffic may have gone through the direct backup. Give the
             // primary carrier the rest of the time to come up: a Yandex node

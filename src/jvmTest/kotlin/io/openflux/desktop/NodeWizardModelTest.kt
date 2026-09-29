@@ -1,5 +1,6 @@
 package io.openflux.desktop
 
+import kotlinx.coroutines.test.advanceTimeBy
 import io.openflux.desktop.model.AppSettings
 import io.openflux.desktop.model.CaptchaPrompt
 import io.openflux.desktop.model.ConnectionMode
@@ -346,6 +347,57 @@ class NodeWizardModelTest {
         assertTrue(wizard.nodeSignedIn)
     }
 
+    /** Gets a Mail.ru channel installed; step 4 then runs as the fake connection says. */
+    private fun kotlinx.coroutines.test.TestScope.installMailru(env: Env): NodeWizardModel {
+        env.connection.active = "mailru"
+        val wizard = NodeWizardModel(env.container, this)
+        env.settings.update { it.copy(knownHostKeys = mapOf("$serverIp:22" to "SHA256:new")) }
+        wizard.host = serverIp
+        wizard.password = "p"
+        wizard.connect()
+        advanceUntilIdle()
+        wizard.useVolga = false
+        wizard.useMailru = true
+        wizard.mailruInput = "https://cloud.mail.ru/public/DEmN/ETbZW2MPY"
+        wizard.next()
+        advanceUntilIdle()
+        return wizard
+    }
+
+    @Test
+    fun vpnWithoutAnAddressCheckPassesOnTheSession() = runTest {
+        val env = Env()
+        env.connection.vpn = true
+        val wizard = installMailru(env)
+        wizard.install()
+        advanceUntilIdle()
+        assertNull(wizard.verifyFailed)
+        assertEquals(WizardStep.Done, wizard.step)
+        assertTrue(wizard.sessionProven)
+        assertEquals("", wizard.verifiedIp)
+        assertTrue(wizard.primaryUp)
+    }
+
+    @Test
+    fun retryAfterAFailureWaitsForTheNewConnection() = runTest {
+        val env = Env()
+        env.connection.failNext = true
+        val wizard = installMailru(env)
+        wizard.install()
+        advanceUntilIdle()
+        assertEquals("нода не ответила", wizard.verifyFailed)
+        // The retry's connect lands later; the old Failed must not end it.
+        env.connection.connectLater = true
+        wizard.verify()
+        advanceTimeBy(5_000)
+        assertNull(wizard.verifyFailed)
+        env.connection.finishConnect()
+        advanceUntilIdle()
+        assertNull(wizard.verifyFailed)
+        assertEquals(WizardStep.Done, wizard.step)
+        assertEquals(serverIp, wizard.verifiedIp)
+    }
+
     @Test
     fun goingBackKeepsTheRoomsAndDropsTheSignInWithoutYandex() = runTest {
         val env = Env()
@@ -598,6 +650,18 @@ class NodeWizardModelTest {
         /** How many exit address checks fail (502 from the core) before one works. */
         var failingChecks = 0
         var checks = 0
+        /** Android's VPN: the app cannot ask where its traffic leaves. */
+        var vpn = false
+        /** The next connect fails, like a node that did not answer. */
+        var failNext = false
+        /** connect() only records the profile; [finishConnect] connects it, like the real one does later. */
+        var connectLater = false
+        private var pending: Profile? = null
+
+        fun finishConnect() {
+            pending?.let(::connectNow)
+            pending = null
+        }
         override val state = MutableStateFlow<ConnectionState>(ConnectionState.Idle)
         override val traffic = MutableStateFlow(TrafficStats())
         override val exitAddress = MutableStateFlow<ExitAddress>(ExitAddress.Unknown)
@@ -608,6 +672,17 @@ class NodeWizardModelTest {
         override val captchaPage: StateFlow<BrowserPage?> = MutableStateFlow(null)
 
         override fun connect(profile: Profile) {
+            when {
+                failNext -> {
+                    failNext = false
+                    state.value = ConnectionState.Failed(profile, "нода не ответила")
+                }
+                connectLater -> pending = profile
+                else -> connectNow(profile)
+            }
+        }
+
+        private fun connectNow(profile: Profile) {
             state.value = ConnectionState.Connected(profile, ConnectionMode.Client, 0)
             exitAddress.value = check()
             traffic.value = TrafficStats(activeTransport = active, live = true)
@@ -621,7 +696,8 @@ class NodeWizardModelTest {
         override fun refreshExitAddress() { exitAddress.value = check() }
 
         private fun check(): ExitAddress =
-            if (checks++ < failingChecks) ExitAddress.Unavailable("Tunnel failed, got: 502") else ExitAddress.Known(exitIp)
+            if (vpn) ExitAddress.NotCheckable("в режиме VPN видно в браузере")
+            else if (checks++ < failingChecks) ExitAddress.Unavailable("Tunnel failed, got: 502") else ExitAddress.Known(exitIp)
         override fun clearLogs() = Unit
         override fun openCaptcha() = Unit
         override fun submitCaptcha() = Unit

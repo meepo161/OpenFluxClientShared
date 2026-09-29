@@ -59,6 +59,14 @@ enum class AccountKind(
             Max -> listOf(homeUrl)
         }
 
+    /**
+     * The carriers the core opens as the signed-in user, which get the
+     * account's cookies. A Yandex board is joined as a guest, and the
+     * Mail.ru document anonymously, so neither does.
+     */
+    val signedInTransports: Set<TransportType>
+        get() = if (!opensSignedIn) emptySet() else transports - TransportType.BOARDS
+
     companion object {
         fun of(type: TransportType): AccountKind? = entries.firstOrNull { type in it.transports }
     }
@@ -171,7 +179,7 @@ object AccountCookies {
             val session = sessions[kind]?.takeUnless { it.expired || it.cookies.isEmpty() } ?: continue
             if (spec.value.isEmpty()) continue
             val name = key(spec)
-            if (kind.opensSignedIn) {
+            if (spec.type in kind.signedInTransports) {
                 out[name] = out[name].orEmpty() + session.cookies
             } else {
                 val kept = out[name]?.minus(session.cookies.keys) ?: continue

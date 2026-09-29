@@ -418,6 +418,7 @@ private fun DetailsColumn(model: HomeScreenModel, selected: Profile?, state: Con
                     ExitAddress.Checking -> "проверяю…" to AppTheme.colors.textSecondary
                     is ExitAddress.Known -> address.ip to AppTheme.colors.text
                     is ExitAddress.Unavailable -> "не удалось: ${address.reason}" to AppTheme.colors.danger
+                    is ExitAddress.NotCheckable -> address.reason to AppTheme.colors.textSecondary
                 }
                 KeyValueRow("Внешний IP", ipText, valueColor = ipColor) {
                     AppIconButton("Проверить ещё раз", model.connection::refreshExitAddress, icon = Icons.Rounded.Refresh, enabled = state is ConnectionState.Connected)

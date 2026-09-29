@@ -60,7 +60,8 @@ class HomeScreenModel(private val container: AppContainer) : ScreenModel {
     /** Services of the profile whose sign-in could go to its exit now, by hand. */
     fun pushable(profile: Profile, state: ConnectionState): List<AccountKind> {
         if (state !is ConnectionState.Connected || state.mode != ConnectionMode.Client || !profile.session) return emptyList()
-        return profile.carriers.mapNotNull { AccountKind.of(it.type) }.distinct().filter { it.opensSignedIn && accounts.validSession(it) != null }
+        return profile.carriers.mapNotNull { c -> AccountKind.of(c.type)?.takeIf { c.type in it.signedInTransports } }
+            .distinct().filter { accounts.validSession(it) != null }
     }
 
     /** Signs in again; a connected own node gets the new sign-in by itself. */

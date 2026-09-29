@@ -112,6 +112,22 @@ class AccountCookiesTest {
     }
 
     @Test
+    fun aBoardIsJoinedAsAGuestWithoutTheAccount() {
+        val board = "https://boards.yandex.ru/whiteboard/?hash=820d6571111dffeb9e85de65ccfc880a"
+        val doc = "https://docs.yandex.ru/edit/d/AAAAAAAAAAAAAAAAAAAA"
+        val profile = Profile(
+            id = "p", name = "n", transport = TransportType.VYANDEX, value = doc, session = true, secret = "0123456789abcdef",
+            extras = listOf(ExtraTransport(TransportType.BOARDS, board)),
+        )
+        val sessions = mapOf(AccountKind.Yandex to AccountSession(AccountKind.Yandex, "i", yandex, 1, 1))
+        val seeded = AccountCookies.seed(mapOf(board to yandex), profile, sessions)
+        assertEquals("s", seeded.getValue(doc)["Session_id"])
+        assertNull(seeded[board])
+        assertEquals(setOf(TransportType.VYANDEX, TransportType.YANDEX), AccountKind.Yandex.signedInTransports)
+        assertEquals(emptySet(), AccountKind.Mailru.signedInTransports)
+    }
+
+    @Test
     fun seedSkipsExpiredSessions() {
         val profile = Profile(id = "p", name = "n", value = "https://docs.yandex.ru/edit/d/AAAAAAAAAAAAAAAAAAAA")
         val sessions = mapOf(AccountKind.Yandex to AccountSession(AccountKind.Yandex, "x", yandex, 1, 1, expired = true))
