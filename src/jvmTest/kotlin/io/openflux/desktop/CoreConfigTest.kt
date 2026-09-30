@@ -1,5 +1,6 @@
 package io.openflux.desktop
 
+import io.openflux.desktop.model.ProfileSource
 import io.openflux.desktop.model.AppSettings
 import io.openflux.desktop.model.ConnectionMode
 import io.openflux.desktop.model.CoreConfig
@@ -88,6 +89,17 @@ class CoreConfigTest {
         assertTrue(launch.arguments.containsAll(listOf("--share", "--share-host=my.host", "--debug=2")))
         assertFalse(launch.arguments.any { it.startsWith("--http-proxy") })
         assertNull(launch.socksAddress)
+    }
+
+    @Test
+    fun aNodesProfileDoesNotRunAsAnExitHere() {
+        val node = session.copy(source = ProfileSource.Node)
+        val exit = AppSettings(mode = ConnectionMode.Exit)
+        val e = assertFailsWith<IllegalArgumentException> { CoreConfig.build(node, exit, paths) }
+        assertTrue("режим «Клиент»" in e.message.orEmpty())
+        // As a client it connects to the node, as before.
+        assertTrue("Role = client" in CoreConfig.build(node, AppSettings(), paths).conf!!)
+        assertNull(session.exitProblem())
     }
 
     @Test

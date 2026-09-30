@@ -62,6 +62,17 @@ data class Profile(
     }
 
     /**
+     * Why the profile must not run as an exit on this device, null when it
+     * may. A node's profile (the wizard's) connects to an exit on a server
+     * that already sits on its documents: a second exit there takes and
+     * answers its clients' packets, and neither works.
+     */
+    fun exitProblem(): String? = if (source != ProfileSource.Node) null else
+        "«$name» — профиль ноды на сервере, её документы уже заняты этой нодой. Как выходная нода на этом устройстве " +
+            "он перехватит трафик её клиентов. Чтобы подключиться к ноде, включите режим «Клиент»; для выходной ноды " +
+            "здесь создайте отдельный профиль со своим документом."
+
+    /**
      * The transports as the core's Session names them: after their type, then
      * type-2, type-3 for repeats, so they match the exit's names (cookie
      * exchange is addressed by name).

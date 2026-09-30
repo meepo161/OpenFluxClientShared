@@ -29,6 +29,7 @@ object CoreConfig {
         val problems = profile.problems()
         require(problems.isEmpty()) { problems.first() }
         val exit = settings.mode == ConnectionMode.Exit
+        if (exit) profile.exitProblem()?.let { throw IllegalArgumentException(it) }
         val socks = "$LOOPBACK:${settings.socksPort}"
         val http = "$LOOPBACK:${settings.socksPort + 1}"
         return if (profile.session) session(profile, settings, paths, exit, socks, http) else classic(profile, settings, paths, exit, socks, http)

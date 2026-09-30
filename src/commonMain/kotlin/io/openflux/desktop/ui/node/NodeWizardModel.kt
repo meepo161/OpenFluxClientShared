@@ -431,10 +431,6 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
         sessionProven = false
         primaryUp = false
         stopWaitingForPrimary = false
-        if (settings.settings.value.mode != ConnectionMode.Client) {
-            verifyFailed = "Проверка идёт в режиме клиента, а сейчас включён режим выходной ноды. Переключите режим на главной и повторите."
-            return
-        }
         busy = "Подключаюсь к новой ноде…"
         try {
             val expected = service.resolve(host.trim())
