@@ -82,6 +82,12 @@ private fun AccountsScreen(model: AccountsScreenModel) {
             }
             Spacer(Modifier.height(AppTheme.spacing.xl))
             Column(Modifier.widthIn(max = 760.dp), verticalArrangement = Arrangement.spacedBy(AppTheme.spacing.l)) {
+                Text(
+                    "Использование аккаунтов в OpenFlux может привести к их блокировке или удалению сервисом. " +
+                        "Автор и другие участники проекта не несут ответственности за ваши аккаунты и последствия их использования.",
+                    style = AppTheme.typography.body,
+                    color = AppTheme.colors.danger,
+                )
                 model.error?.let { Banner(it, Tone.Danger, icon = Icons.Rounded.ErrorOutline) }
                 cards.forEach { card -> AccountCardView(card, model, now) }
                 Text(
