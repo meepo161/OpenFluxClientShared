@@ -163,10 +163,10 @@ class CoreConnectionService(
         return names.size
     }
 
-    override fun connect(profile: Profile) {
+    override fun connect(profile: Profile, mode: ConnectionMode?) {
         scope.launch {
             synchronized(lock) { run }?.let { stopRun(it, restart = true) }
-            start(profile)
+            start(profile, mode)
         }
     }
 
@@ -174,8 +174,8 @@ class CoreConnectionService(
         scope.launch { synchronized(lock) { run }?.let { stopRun(it, restart = false) } }
     }
 
-    private fun start(profile: Profile) {
-        val current = settings.settings.value
+    private fun start(profile: Profile, mode: ConnectionMode?) {
+        val current = settings.settings.value.let { s -> mode?.let { s.copy(mode = it) } ?: s }
         _exitShareLink.value = null
         _exitAddress.value = ExitAddress.Unknown
         _traffic.value = TrafficStats()

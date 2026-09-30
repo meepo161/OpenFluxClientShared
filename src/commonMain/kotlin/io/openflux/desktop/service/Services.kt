@@ -5,6 +5,7 @@ import io.openflux.desktop.model.AccountKind
 import io.openflux.desktop.model.AccountSession
 import io.openflux.desktop.model.AppSettings
 import io.openflux.desktop.model.CaptchaPrompt
+import io.openflux.desktop.model.ConnectionMode
 import io.openflux.desktop.model.ConnectionState
 import io.openflux.desktop.model.CoreSource
 import io.openflux.desktop.model.NodeCoreSource
@@ -58,7 +59,13 @@ interface ConnectionService {
     /** The Yandex check in the built-in browser while [captcha] is open. */
     val captchaPage: StateFlow<BrowserPage?>
 
-    fun connect(profile: Profile)
+    /**
+     * Starts [profile] in [mode], or in the settings' mode when null. The
+     * node wizard checks a new node as a client whatever the app is set
+     * to: in exit mode the check ran a second exit on the node's own
+     * documents, which took its clients' packets.
+     */
+    fun connect(profile: Profile, mode: ConnectionMode? = null)
     fun disconnect()
     fun refreshExitAddress()
     fun clearLogs()

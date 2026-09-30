@@ -442,7 +442,7 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
             // what shows is the previous attempt (a Failed of this same
             // profile ended a retry at once with the old error).
             val before = connection.state.value
-            connection.connect(candidate)
+            connection.connect(candidate, ConnectionMode.Client)
             val deadline = container.platform.now() + VERIFY_TIMEOUT_MS
             // connect() is asynchronous: the previous connection may still
             // show until the new one starts.

@@ -54,6 +54,8 @@ class NodeWizardModelTest {
     @Test
     fun wholeWizardSavesAVerifiedProfile() = runTest {
         val env = Env()
+        // The app is set to run an exit: the check still connects as a client.
+        env.settings.update { it.copy(mode = ConnectionMode.Exit) }
         val wizard = NodeWizardModel(env.container, this)
         wizard.host = serverIp
         wizard.password = "ssh-pass"
@@ -86,6 +88,7 @@ class NodeWizardModelTest {
         assertEquals(serverIp, wizard.verifiedIp)
         assertTrue(wizard.primaryUp)
         assertTrue(wizard.unsaved)
+        assertEquals(listOf<ConnectionMode?>(ConnectionMode.Client), env.connection.modes)
 
         val saved = wizard.save()!!
         assertEquals(ProfileSource.Node, saved.source)
@@ -671,7 +674,11 @@ class NodeWizardModelTest {
         override val socksAddress: StateFlow<String?> = MutableStateFlow(null)
         override val captchaPage: StateFlow<BrowserPage?> = MutableStateFlow(null)
 
-        override fun connect(profile: Profile) {
+        /** The mode each connect() asked for (null: the settings' mode). */
+        val modes = mutableListOf<ConnectionMode?>()
+
+        override fun connect(profile: Profile, mode: ConnectionMode?) {
+            modes += mode
             when {
                 failNext -> {
                     failNext = false
