@@ -53,6 +53,13 @@ class CoreConfigTest {
     }
 
     @Test
+    fun bondingSummaryNamesNetworks() {
+        val bonded = session.copy(bonding = true, network = NetworkKind.Cellular)
+        assertTrue(bonded.bondingSummary.startsWith("${TransportType.VYANDEX.shortLabel} · Мобильная + "), bonded.bondingSummary)
+        assertEquals("", session.bondingSummary)
+    }
+
+    @Test
     fun bondingNeedsTwoSessionCarriers() {
         assertTrue(session.copy(bonding = true).problems().isEmpty())
         val one = Profile(id = "o", name = "o", transport = TransportType.MAILRU, value = "https://cloud.mail.ru/public/a/b", secret = secret, session = true, bonding = true)

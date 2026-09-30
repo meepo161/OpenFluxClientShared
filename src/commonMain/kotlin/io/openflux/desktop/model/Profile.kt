@@ -71,6 +71,12 @@ data class Profile(
     val summary: String
         get() = if (session) carriers.joinToString(" + ") { it.type.shortLabel } else transport.label
 
+    /** "Mail.ru · Мобильная + Яндекс · Wi-Fi" for a bonded profile, "" otherwise. */
+    val bondingSummary: String
+        get() = if (!bonding || !session) "" else carriers.joinToString(" + ") { c ->
+            c.type.shortLabel + if (c.network != NetworkKind.Default) " · " + c.network.label else ""
+        }
+
     /** Problems that keep the profile from connecting, empty when it can. */
     fun problems(): List<String> = buildList {
         if (name.isBlank()) add("Укажите название")
