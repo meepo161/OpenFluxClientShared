@@ -41,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import io.openflux.desktop.model.NodeCoreSource
 import io.openflux.desktop.model.NodeTransports
 import io.openflux.desktop.model.TransportType
 import io.openflux.desktop.service.LocalAppContainer
@@ -182,8 +183,11 @@ private fun Header(model: NodeWizardModel, onClose: () -> Unit) {
         WizardStep.Document -> "Транспорты канала" to "Через что устройство и нода будут обмениваться зашифрованным трафиком."
         WizardStep.Plan -> "Будут изменения" to "На сервере будет сделано только это."
         WizardStep.Verify -> "Проверка канала" to "Подключаюсь к новой ноде и открываю сайт через неё."
-        WizardStep.Done -> "Нода готова" to if (model.verifiedIp.isEmpty()) "Канал установлен, но проверка не завершена."
-            else "Трафик выходит в интернет с адреса ${model.verifiedIp}."
+        WizardStep.Done -> "Нода готова" to when {
+            model.verifiedIp.isNotEmpty() -> "Трафик выходит в интернет с адреса ${model.verifiedIp}."
+            model.sessionProven -> "Нода ответила по защищённому каналу. Адрес выхода в режиме VPN видно в браузере: api.ipify.org."
+            else -> "Канал установлен, но проверка не завершена."
+        }
     }
     Row(verticalAlignment = Alignment.Top) {
         if (model.step == WizardStep.Document || model.step == WizardStep.Plan) {
@@ -206,10 +210,10 @@ private fun Status(model: NodeWizardModel) {
     val error = model.error
     val notice = model.notice
     // The document step shows the browser's progress next to the browser.
-    if (busy == null && error == null && notice == null) return
+    if ((busy == null || model.documentProgress != null) && error == null && notice == null) return
     Spacer(Modifier.height(AppTheme.spacing.l))
     when {
-        busy != null -> Banner(busy, Tone.Accent, icon = Icons.Rounded.Info)
+        busy != null && model.documentProgress == null -> Banner(busy, Tone.Accent, icon = Icons.Rounded.Info)
         error != null -> Banner(error, Tone.Danger, icon = Icons.Rounded.ErrorOutline)
         notice != null -> Banner(notice, Tone.Success, icon = Icons.Rounded.CheckCircle)
     }
@@ -271,6 +275,14 @@ private fun ColumnScope.ServerStep(model: NodeWizardModel) {
         AppTextField(model.password, { model.password = it }, label = "Пароль", secret = true, enabled = idle)
     }
     Note("Пароль и ключ нужны только на время установки: OpenFlux их не сохраняет.")
+    Spacer(Modifier.height(AppTheme.spacing.l))
+    SectionLabel("Ядро на сервере")
+    Spacer(Modifier.height(AppTheme.spacing.s))
+    Segmented(NodeCoreSource.entries, model.nodeCore, { it.label }, { model.nodeCore = it }, enabled = idle)
+    Note(
+        "Нода ставит ядро из релизов ${model.nodeCore.repo} на GitHub и, если включить автообновление, " +
+            "обновляется по ним же. Ядро одно на все каналы сервера: при другом выборе сервер перейдёт на него.",
+    )
     Actions {
         AppButton(if (idle) "Подключиться" else "Подключаюсь…", { model.connect() }, enabled = idle)
     }
@@ -312,9 +324,21 @@ private fun ColumnScope.DocumentStep(model: NodeWizardModel) {
         )
         HorizontalRule()
         SwitchRow(
+            "Yandex Docs",
+            "Тот же документ Яндекса через прежний транспорт Yandex Docs.",
+            model.useYandexDocs, { model.useYandexDocs = it }, enabled = switchable,
+        )
+        HorizontalRule()
+        SwitchRow(
             "Mail.ru Документы",
             "Публичная ссылка на ваш документ в Облаке Mail.ru с правом редактирования.",
             model.useMailru, { model.useMailru = it }, enabled = switchable,
+        )
+        HorizontalRule()
+        SwitchRow(
+            "Яндекс Доска",
+            "Доска Яндекс Досок, открытая гостям на редактирование.",
+            model.useBoards, { model.useBoards = it }, enabled = switchable,
         )
         HorizontalRule()
         SwitchRow(
@@ -330,16 +354,61 @@ private fun ColumnScope.DocumentStep(model: NodeWizardModel) {
         Spacer(Modifier.height(AppTheme.spacing.l))
         SectionLabel("Документ Mail.ru")
         Spacer(Modifier.height(AppTheme.spacing.s))
+        if (model.mailruInput.isNotEmpty()) {
+            Banner("Документ готов: ${model.mailruInput}", Tone.Success, icon = Icons.Rounded.CheckCircle)
+            Spacer(Modifier.height(AppTheme.spacing.s))
+        }
+        Actions {
+            AppButton(
+                if (model.mailruInput.isEmpty()) "Войти в Mail.ru и создать документ" else "Создать другой документ",
+                model::createMailruDocument,
+                leadingResource = AppIcons.byName("ic_mailru"),
+                style = if (model.mailruInput.isEmpty()) ButtonStyle.Primary else ButtonStyle.Secondary,
+                enabled = idle,
+            )
+        }
+        Note(
+            "Вход откроется в окне встроенного браузера, как на вкладке «Аккаунты»: если вход уже сохранён, вводить " +
+                "ничего не придётся. Документ появится в папке openflux в Облаке с редактированием по ссылке.",
+        )
+        Spacer(Modifier.height(AppTheme.spacing.l))
+        Text("Или свой документ", style = AppTheme.typography.bodyStrong, color = AppTheme.colors.text)
+        Spacer(Modifier.height(AppTheme.spacing.s))
         AppTextField(model.mailruInput, { model.mailruInput = it.trim() }, placeholder = "https://cloud.mail.ru/public/…",
             monospace = true, enabled = idle, helper = "Облако Mail.ru → документ → «Поделиться» → доступ по ссылке с редактированием")
     }
 
-    if (model.useVolga) {
+    if (model.useBoards) {
+        Spacer(Modifier.height(AppTheme.spacing.l))
+        SectionLabel("Доска Яндекса")
+        Spacer(Modifier.height(AppTheme.spacing.s))
+        if (model.boardInput.isNotEmpty()) {
+            Banner("Доска готова: ${model.boardInput}", Tone.Success, icon = Icons.Rounded.CheckCircle)
+            Spacer(Modifier.height(AppTheme.spacing.s))
+        }
+        Actions {
+            AppButton(
+                if (model.boardInput.isEmpty()) "Войти в Яндекс и создать доску" else "Создать другую доску",
+                model::createBoard,
+                leadingResource = AppIcons.Yandex,
+                style = if (model.boardInput.isEmpty()) ButtonStyle.Primary else ButtonStyle.Secondary,
+                enabled = idle,
+            )
+        }
+        Note("Доска появится в ваших Яндекс Досках с доступом гостям на редактирование.")
+        Spacer(Modifier.height(AppTheme.spacing.l))
+        Text("Или своя доска", style = AppTheme.typography.bodyStrong, color = AppTheme.colors.text)
+        Spacer(Modifier.height(AppTheme.spacing.s))
+        AppTextField(model.boardInput, { model.boardInput = it.trim() }, placeholder = "https://boards.yandex.ru/whiteboard/?hash=…",
+            monospace = true, enabled = idle, helper = "«Поделиться» → гостевой доступ с правом редактирования")
+    }
+
+    if (model.needsYandexDocument) {
         Spacer(Modifier.height(AppTheme.spacing.l))
         VolgaDocument(model)
     }
 
-    if (!model.useVolga || model.documentUrl.isNotEmpty()) {
+    if (!model.needsYandexDocument || model.documentUrl.isNotEmpty()) {
         Actions {
             AppButton(if (idle) "Далее" else "Подождите…", model::next, enabled = idle)
         }
@@ -350,10 +419,41 @@ private fun ColumnScope.DocumentStep(model: NodeWizardModel) {
 @Composable
 private fun ColumnScope.VolgaDocument(model: NodeWizardModel) {
     val idle = model.busy == null
-    SectionLabel("Свой пустой документ")
+    val progress = model.documentProgress
+    // The document is made with the Yandex sign-in, saved in the Accounts
+    // window; the user's own link stays as the other way.
+    val signIn = true
+    SectionLabel(if (signIn) "Документ Яндекса" else "Свой пустой документ")
     if (model.documentUrl.isNotEmpty()) {
         Spacer(Modifier.height(AppTheme.spacing.s))
         Banner("Документ готов: ${model.documentUrl}", Tone.Success, icon = Icons.Rounded.CheckCircle)
+    }
+    if (signIn) {
+        Actions {
+            if (progress != null) {
+                AppButton("Отменить вход в Яндекс", model::cancelDocument, style = ButtonStyle.Secondary)
+            } else {
+                AppButton(
+                    if (model.documentUrl.isEmpty()) "Войти в Яндекс и создать документ" else "Создать другой документ",
+                    model::createDocument,
+                    leadingResource = AppIcons.Yandex,
+                    style = if (model.documentUrl.isEmpty()) ButtonStyle.Primary else ButtonStyle.Secondary,
+                    enabled = idle,
+                )
+            }
+        }
+        if (progress != null) {
+            Spacer(Modifier.height(AppTheme.spacing.m))
+            Banner(progress, Tone.Accent, icon = Icons.Rounded.Info)
+        }
+        // The page itself opens in the sign-in window, like on the Accounts tab.
+        Note(
+            "Вход и Диск откроются в окне встроенного браузера, как на вкладке «Аккаунты»: если вход уже сохранён, " +
+                "вводить ничего не придётся. Документ появится в папке openflux на вашем Яндекс Диске с доступом " +
+                "«Редактирование» по ссылке.",
+        )
+        Spacer(Modifier.height(AppTheme.spacing.l))
+        Text("Или свой пустой документ", style = AppTheme.typography.bodyStrong, color = AppTheme.colors.text)
     }
     Spacer(Modifier.height(AppTheme.spacing.s))
     AppTextField(model.documentInput, { model.documentInput = it.trim() }, placeholder = "https://disk.yandex.ru/edit/d/…",
@@ -400,6 +500,16 @@ private fun ColumnScope.PlanStep(model: NodeWizardModel) {
             "Раз в 6 часов сервер проверяет новые релизы ноды на GitHub, сверяет хеши и обновляется сам. " +
                 "Если канал на новом ядре не поднялся, возвращает прежнее. Действует на все каналы сервера.",
             model.autoUpdate, model::changeAutoUpdate, enabled = idle,
+        )
+    }
+    if (model.nodeSignedIn) {
+        Spacer(Modifier.height(AppTheme.spacing.m))
+        Banner(
+            "Нода будет открывать документ под вашим аккаунтом Яндекса: так Яндекс не требует от сервера капчу. " +
+                "Кто получит root на сервере, получит и доступ к этому аккаунту, поэтому лучше входить отдельным аккаунтом для документов.",
+            Tone.Warning,
+            icon = Icons.Rounded.Warning,
+            action = { TextAction("Не передавать", model::forgetYandexSignIn, enabled = idle) },
         )
     }
     if (model.documentWarning.isNotEmpty()) {
@@ -459,7 +569,7 @@ private fun ColumnScope.VerifyStep(model: NodeWizardModel) {
 @Composable
 private fun ColumnScope.DoneStep(model: NodeWizardModel, onShowQr: () -> Unit, onSaved: (String) -> Unit, onClose: () -> Unit) {
     val toaster = LocalToaster.current
-    if (model.verifiedIp.isNotEmpty() && !model.primaryUp) {
+    if ((model.verifiedIp.isNotEmpty() || model.sessionProven) && !model.primaryUp) {
         Banner(
             "Сейчас работает резервный канал (прямое подключение к серверу). Канал через ${model.primaryType?.shortLabel.orEmpty()} ещё не поднялся" +
                 if (model.primaryType == TransportType.VYANDEX) ": когда нода попросит проверку, OpenFlux покажет её, пройдите её." else ": OpenFlux переключится на него, когда он заработает.",

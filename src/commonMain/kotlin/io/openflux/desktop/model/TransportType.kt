@@ -29,7 +29,7 @@ enum class TransportType(
 
     @SerialName("boards")
     BOARDS("boards", "Yandex Board", "Board", ValueKind.DocumentUrl,
-        "https://…/board/…", "ic_yandex"),
+        "https://boards.yandex.ru/whiteboard/?hash=…", "ic_yandex"),
 
     @SerialName("mailru")
     MAILRU("mailru", "Mail.ru Docs", "Mail.ru", ValueKind.DocumentUrl,

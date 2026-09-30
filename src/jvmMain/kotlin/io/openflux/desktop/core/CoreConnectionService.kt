@@ -21,6 +21,10 @@ import io.openflux.desktop.model.Profile
 import io.openflux.desktop.model.TrafficStats
 import io.openflux.desktop.model.isActive
 import io.openflux.desktop.platform.WindowsSystemProxy
+import io.openflux.desktop.data.CookieStoreSeeder
+import io.openflux.desktop.model.AccountKind
+import io.openflux.desktop.model.ProfileSource
+import io.openflux.desktop.service.Accounts
 import io.openflux.desktop.service.ConnectionService
 import io.openflux.desktop.service.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
@@ -32,8 +36,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.jsonArray
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.file.Files
@@ -55,6 +61,7 @@ import java.util.concurrent.atomic.AtomicLong
 class CoreConnectionService(
     private val settings: SettingsRepository,
     private val binary: CoreBinary,
+    private val accounts: Accounts,
 ) : ConnectionService {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val isWindows = System.getProperty("os.name").lowercase().contains("win")
@@ -93,6 +100,8 @@ class CoreConnectionService(
         val elevated: Elevated? = null,
         val jobs: MutableList<Job> = mutableListOf(),
     ) {
+        /** The sign-ins handed to the exit this run, not to send the same twice. */
+        val pushed = java.util.concurrent.ConcurrentHashMap<AccountKind, Map<String, String>>()
         @Volatile var ipc: CoreIpc? = null
         @Volatile var stopping = false
         @Volatile var lastProblem: String? = null
@@ -127,12 +136,51 @@ class CoreConnectionService(
         scope.launch {
             settings.settings.distinctUntilChangedBy { it.systemProxy }.collect { applySystemProxy() }
         }
+        // A fresh sign-in (after it expired) goes on to your own node at once.
+        scope.launch {
+            accounts.sessions.drop(1).collect { sessions ->
+                val current = synchronized(lock) { run } ?: return@collect
+                if (_state.value !is ConnectionState.Connected || !ownsExit(current)) return@collect
+                for ((kind, session) in sessions) {
+                    if (!kind.opensSignedIn) continue
+                    if (session.expired || current.pushed[kind] == session.cookies) continue
+                    pushQuietly(current, kind)
+                }
+            }
+        }
     }
 
-    override fun connect(profile: Profile) {
+    /** Your own node (from the wizard): it may get your sign-in without asking. */
+    private fun ownsExit(run: Run) =
+        run.settings.mode == ConnectionMode.Client && run.usesIpc && run.profile.source == ProfileSource.Node &&
+            run.settings.useAccountSessions
+
+    private suspend fun pushQuietly(run: Run, kind: AccountKind) {
+        runCatching { pushTo(run, kind) }
+            .onFailure { log(LogLevel.Warning, "Не удалось передать вход ${kind.label} ноде: ${it.message}") }
+    }
+
+    override suspend fun pushAccountToExit(kind: AccountKind): Int {
+        val current = synchronized(lock) { run } ?: throw IllegalStateException("Нет подключения к ноде")
+        return pushTo(current, kind)
+    }
+
+    private fun pushTo(run: Run, kind: AccountKind): Int {
+        check(run.settings.mode == ConnectionMode.Client && run.usesIpc) { "Передать вход можно только ноде профиля Session" }
+        val ipc = run.ipc ?: throw IllegalStateException("Нет связи с ядром")
+        val session = accounts.validSession(kind) ?: throw IllegalStateException("Сначала войдите в ${kind.label}")
+        val names = run.profile.sessionSpecs().filter { it.type in kind.signedInTransports }.map { it.name }
+        check(names.isNotEmpty()) { "В профиле нет транспортов ${kind.label}" }
+        names.forEach { ipc.offerCookies(IpcCookiesOffer(it, session.cookies, remote = true)) }
+        run.pushed[kind] = session.cookies
+        log(LogLevel.Success, "Вход ${kind.label} передан ноде (${names.size} транспорт.)")
+        return names.size
+    }
+
+    override fun connect(profile: Profile, mode: ConnectionMode?) {
         scope.launch {
             synchronized(lock) { run }?.let { stopRun(it, restart = true) }
-            start(profile)
+            start(profile, mode)
         }
     }
 
@@ -140,8 +188,8 @@ class CoreConnectionService(
         scope.launch { synchronized(lock) { run }?.let { stopRun(it, restart = false) } }
     }
 
-    private fun start(profile: Profile) {
-        val current = settings.settings.value
+    private fun start(profile: Profile, mode: ConnectionMode?) {
+        val current = settings.settings.value.let { s -> mode?.let { s.copy(mode = it) } ?: s }
         _exitShareLink.value = null
         _exitAddress.value = ExitAddress.Unknown
         _traffic.value = TrafficStats()
@@ -150,6 +198,7 @@ class CoreConnectionService(
         try {
             val core = binary.resolve(current) ?: throw IllegalStateException(
                 if (current.coreSource == CoreSource.Custom) "Файл ядра не найден: ${current.customCorePath}"
+                else if (current.coreSource.repo != null) "Ядро «${current.coreSource.label}» ещё не скачано: Настройки → Ядро → Скачать"
                 else "В этой сборке нет встроенного ядра: установите релиз с GitHub, соберите приложение с Go " +
                     "(./gradlew соберёт ядро сам) или укажите файл ядра в настройках",
             )
@@ -177,6 +226,9 @@ class CoreConnectionService(
                 ipcSocket = ipcSocket?.absolutePath,
             )
             val launch = CoreConfig.build(profile, current, paths)
+            if (current.useAccountSessions) {
+                CookieStoreSeeder.seed(File(paths.cookieStore), profile, accounts.sessions.value)
+            }
             if (launch.conf != null) {
                 confFile.writeText(launch.conf)
                 restrictToOwner(confFile)
@@ -373,6 +425,9 @@ class CoreConnectionService(
             if (first) log(LogLevel.Success, if (run.settings.mode == ConnectionMode.Exit) "Нода запущена" else "Подключено к ноде")
             applySystemProxy()
             if (run.settings.mode == ConnectionMode.Client) refreshExitAddress()
+            if (first && ownsExit(run)) scope.launch {
+                accounts.sessions.value.values.filter { !it.expired && it.kind.opensSignedIn }.forEach { pushQuietly(run, it.kind) }
+            }
         }
     }
 
@@ -649,7 +704,62 @@ class CoreBinary {
     fun resolve(settings: AppSettings): File? = when (settings.coreSource) {
         CoreSource.Custom -> File(settings.customCorePath.trim()).takeIf { settings.customCorePath.isNotBlank() && it.isFile }
         CoreSource.Bundled -> bundled()
+        CoreSource.Fork, CoreSource.Official -> downloaded(settings.coreSource)
     }?.let(::runnable)
+
+    /**
+     * The core for the node wizard: the bundled one, whose --node-wizard
+     * protocol matches this app; the chosen one only when there is none.
+     */
+    fun wizardCore(settings: AppSettings): File? = bundled()?.let(::runnable) ?: resolve(settings)
+
+    private fun downloadDir(source: CoreSource): File =
+        File(AppDirs.config, "cores/" + source.repo!!.replace('/', '_'))
+
+    /** The core downloaded for [source] (Fork, Official), null when none. */
+    fun downloaded(source: CoreSource): File? =
+        source.repo?.let { File(downloadDir(source), fileName).takeIf(File::isFile) }
+
+    /** The release tag of [downloaded]. */
+    fun downloadedTag(source: CoreSource): String? =
+        source.repo?.let { File(downloadDir(source), "tag").takeIf(File::isFile)?.readText()?.trim() }
+            ?.takeIf { downloaded(source) != null }
+
+    /**
+     * Downloads the newest v* release core for this OS from [source]'s
+     * repository and keeps it if its SHA-256 is the one the release's
+     * SHA256SUMS.txt names. Returns the release tag.
+     */
+    fun download(source: CoreSource): String {
+        val repo = source.repo ?: throw IllegalArgumentException("$source is not downloaded")
+        val http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15))
+            .followRedirects(HttpClient.Redirect.NORMAL).build()
+        fun get(url: String): HttpResponse<ByteArray> {
+            val response = http.send(
+                HttpRequest.newBuilder(URI(url)).header("User-Agent", "OpenFlux-Desktop").timeout(Duration.ofMinutes(3)).build(),
+                HttpResponse.BodyHandlers.ofByteArray(),
+            )
+            if (response.statusCode() != 200) throw IllegalStateException("GitHub ответил ${response.statusCode()} на $url")
+            return response
+        }
+        val releases = kotlinx.serialization.json.Json.parseToJsonElement(
+            String(get("https://api.github.com/repos/$repo/releases?per_page=30").body(), Charsets.UTF_8),
+        ).jsonArray
+        val asset = CoreReleases.pick(releases, fileName)
+            ?: throw IllegalStateException("В релизах $repo нет ядра $fileName")
+        val want = CoreReleases.sha256(String(get(asset.sumsUrl).body(), Charsets.UTF_8), fileName)
+            ?: throw IllegalStateException("В SHA256SUMS.txt релиза ${asset.tag} нет $fileName")
+        val body = get(asset.url).body()
+        val got = java.security.MessageDigest.getInstance("SHA-256").digest(body).joinToString("") { "%02x".format(it) }
+        if (got != want) throw IllegalStateException("SHA-256 скачанного ядра ${asset.tag} не совпал с SHA256SUMS.txt")
+        val dir = downloadDir(source).apply { mkdirs() }
+        val tmp = File(dir, "$fileName.download")
+        tmp.writeBytes(body)
+        tmp.setExecutable(true, true)
+        Files.move(tmp.toPath(), File(dir, fileName).toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        File(dir, "tag").writeText(asset.tag)
+        return asset.tag
+    }
 
     /**
      * On Linux and macOS the core must be executable. A package may lose the

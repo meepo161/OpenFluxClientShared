@@ -6,6 +6,19 @@ import kotlinx.serialization.Serializable
 @Serializable
 enum class ProfileSource(val label: String) { Manual("Вручную"), Link("Ссылка openflux://"), Qr("QR-код"), Node("Своя нода") }
 
+/**
+ * The network a carrier leaves through. With bonding, carriers on different
+ * networks (mobile data and Wi-Fi) add their speeds up. Kept on the device:
+ * never in `openflux://` links.
+ */
+@Serializable
+enum class NetworkKind(val cli: String, val label: String) {
+    Default("", "Любая"),
+    Cellular("cellular", "Мобильная"),
+    Wifi("wifi", "Wi-Fi"),
+    Ethernet("ethernet", "Ethernet"),
+}
+
 /** One extra carrier of a Session profile. */
 @Serializable
 data class ExtraTransport(
@@ -13,6 +26,7 @@ data class ExtraTransport(
     val value: String = "",
     val uid: String = "",
     val priority: Int = 50,
+    val network: NetworkKind = NetworkKind.Default,
 )
 
 /**
@@ -41,13 +55,27 @@ data class Profile(
     val extras: List<ExtraTransport> = emptyList(),
     val source: ProfileSource = ProfileSource.Manual,
     val createdAt: Long = 0,
+    /** The main carrier's network (see [NetworkKind]). */
+    val network: NetworkKind = NetworkKind.Default,
+    /**
+     * Split the Session over all carriers at once (the core's bonding): their
+     * speeds add up and one that drops leaves the rest carrying on. Needs an
+     * exit that bonds (node-v1.3.0+); others route by flow as before.
+     */
+    val bonding: Boolean = false,
 ) {
     /** Every carrier of the profile, main first. */
     val carriers: List<ExtraTransport>
-        get() = listOf(ExtraTransport(transport, value, uid, priority)) + if (session) extras else emptyList()
+        get() = listOf(ExtraTransport(transport, value, uid, priority, network)) + if (session) extras else emptyList()
 
     val summary: String
         get() = if (session) carriers.joinToString(" + ") { it.type.shortLabel } else transport.label
+
+    /** "Mail.ru · Мобильная + Яндекс · Wi-Fi" for a bonded profile, "" otherwise. */
+    val bondingSummary: String
+        get() = if (!bonding || !session) "" else carriers.joinToString(" + ") { c ->
+            c.type.shortLabel + if (c.network != NetworkKind.Default) " · " + c.network.label else ""
+        }
 
     /** Problems that keep the profile from connecting, empty when it can. */
     fun problems(): List<String> = buildList {
@@ -59,7 +87,19 @@ data class Profile(
         if (session && secret.length < MIN_SECRET) add("Для режима Session нужен ключ не короче $MIN_SECRET символов")
         if (!session && secret.isNotEmpty() && secret.length < MIN_SECRET) add("Ключ должен быть не короче $MIN_SECRET символов")
         if (!session && transport.sessionOnly) add("${transport.label} работает только в режиме Session")
+        if (bonding && (!session || carriers.size < 2)) add("Для бондинга нужен режим Session и хотя бы два транспорта")
     }
+
+    /**
+     * Why the profile must not run as an exit on this device, null when it
+     * may. A node's profile (the wizard's) connects to an exit on a server
+     * that already sits on its documents: a second exit there takes and
+     * answers its clients' packets, and neither works.
+     */
+    fun exitProblem(): String? = if (source != ProfileSource.Node) null else
+        "«$name» — профиль ноды на сервере, её документы уже заняты этой нодой. Как выходная нода на этом устройстве " +
+            "он перехватит трафик её клиентов. Чтобы подключиться к ноде, включите режим «Клиент»; для выходной ноды " +
+            "здесь создайте отдельный профиль со своим документом."
 
     /**
      * The transports as the core's Session names them: after their type, then
@@ -77,6 +117,7 @@ data class Profile(
                 value = carrier.value.trim(),
                 uid = carrier.uid.trim(),
                 priority = carrier.priority,
+                network = carrier.network,
             )
         }
     }
@@ -167,4 +208,5 @@ data class SessionSpec(
     val value: String,
     val uid: String,
     val priority: Int,
+    val network: NetworkKind = NetworkKind.Default,
 )

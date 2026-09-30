@@ -4,12 +4,16 @@ import io.openflux.desktop.core.CoreBinary
 import io.openflux.desktop.model.LogLevel
 import io.openflux.desktop.model.LogLine
 import io.openflux.desktop.model.NewChannel
+import io.openflux.desktop.model.NodeCoreSource
 import io.openflux.desktop.model.NodePlan
 import io.openflux.desktop.model.NodeTransport
 import io.openflux.desktop.model.NodeWizardException
 import io.openflux.desktop.model.ServerProbe
 import io.openflux.desktop.model.SshTarget
+import io.openflux.desktop.model.YandexDocument
 import io.openflux.desktop.ui.BrowserPage
+import io.openflux.desktop.service.AccountException
+import io.openflux.desktop.service.Accounts
 import io.openflux.desktop.service.NodeWizardService
 import io.openflux.desktop.service.SettingsRepository
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +46,7 @@ import java.util.concurrent.atomic.AtomicLong
 class CoreNodeWizard(
     private val settings: SettingsRepository,
     private val binary: CoreBinary,
+    private val accounts: Accounts,
 ) : NodeWizardService {
     private val json = Json { ignoreUnknownKeys = true }
     private val lock = Mutex()
@@ -54,8 +59,9 @@ class CoreNodeWizard(
 
     private class Helper(val process: Process, val input: BufferedWriter, val output: BufferedReader)
 
-    override suspend fun connect(target: SshTarget): ServerProbe {
-        val reply = call("connect", "${target.host}:${target.port} (${target.user})") {
+    override suspend fun connect(target: SshTarget, source: NodeCoreSource): ServerProbe {
+        val reply = call("connect", "${target.host}:${target.port} (${target.user}) core=${source.id}") {
+            put("source", source.id)
             put("host", target.host)
             put("port", target.port)
             put("user", target.user)
@@ -72,11 +78,12 @@ class CoreNodeWizard(
         return NewChannel(reply.string("channel"), reply.string("key"))
     }
 
-    override suspend fun plan(channel: String, transports: List<NodeTransport>, autoUpdate: Boolean): NodePlan {
-        val reply = call("plan", "channel=$channel ${transports.names()} autoUpdate=$autoUpdate") {
+    override suspend fun plan(channel: String, transports: List<NodeTransport>, withCookies: Boolean, autoUpdate: Boolean): NodePlan {
+        val reply = call("plan", "channel=$channel ${transports.names()} withCookies=$withCookies autoUpdate=$autoUpdate") {
             put("channel", channel)
             put("channelPort", 0)
             put("transports", transports.json())
+            put("withCookies", withCookies)
             put("autoUpdate", autoUpdate)
         }
         return json.decodeFromJsonElement(NodePlan.serializer(), reply.getValue("plan"))
@@ -88,6 +95,7 @@ class CoreNodeWizard(
         port: Int,
         autoUpdate: Boolean,
         sudoPassword: String,
+        cookieHeader: String,
     ) {
         call("apply", "channel=${channel.id} ${transports.names()} port=$port autoUpdate=$autoUpdate") {
             put("channel", channel.id)
@@ -96,6 +104,7 @@ class CoreNodeWizard(
             put("channelPort", port)
             put("autoUpdate", autoUpdate)
             put("sudoPassword", sudoPassword)
+            put("cookies", cookieHeader)
         }
     }
 
@@ -133,7 +142,19 @@ class CoreNodeWizard(
             .getOrDefault(emptySet())
     }
 
+    override val documentPage: StateFlow<BrowserPage?> = accounts.page
+
+    override suspend fun createDocument(fileName: String, onStep: (String) -> Unit): YandexDocument =
+        try {
+            accounts.createWizardDocument(fileName, onStep)
+        } catch (e: AccountException) {
+            throw NodeWizardException(e.message ?: "Не получилось создать документ")
+        }
+
+    override fun cancelDocument() = accounts.cancel()
+
     override fun close() {
+        accounts.cancel()
         val current = helper
         helper = null
         if (current != null) {
@@ -200,7 +221,9 @@ class CoreNodeWizard(
         }
 
     private fun start(): Helper {
-        val core = binary.resolve(settings.settings.value)
+        // The wizard speaks the protocol of the core packed with this app;
+        // a downloaded or custom core may be older.
+        val core = binary.wizardCore(settings.settings.value)
             ?: run {
                 log(LogLevel.Error, "мастер: не найдено ядро OpenFlux")
                 throw NodeWizardException("Не найдено ядро OpenFlux: укажите его в настройках")

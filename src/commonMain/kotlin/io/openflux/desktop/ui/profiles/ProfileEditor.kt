@@ -1,5 +1,11 @@
 package io.openflux.desktop.ui.profiles
 
+import io.openflux.desktop.model.DocumentKind
+import androidx.compose.runtime.collectAsState
+import io.openflux.desktop.model.AccountKind
+import io.openflux.desktop.model.AuthStatus
+import io.openflux.desktop.ui.accounts.AccountsScreenModel
+import io.openflux.desktop.ui.components.StatusBadge
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -66,6 +72,9 @@ import io.openflux.desktop.ui.components.LocalToaster
 import io.openflux.desktop.ui.components.MenuAction
 import io.openflux.desktop.ui.components.SectionLabel
 import io.openflux.desktop.ui.components.Segmented
+import io.openflux.desktop.ui.components.SwitchRow
+import io.openflux.desktop.model.NetworkKind
+import io.openflux.desktop.service.PlatformKind
 import io.openflux.desktop.ui.components.TextAction
 import io.openflux.desktop.ui.components.Tone
 import io.openflux.desktop.ui.components.appClickable
@@ -76,6 +85,13 @@ import org.jetbrains.compose.resources.painterResource
 @Composable
 fun ProfileEditor(model: ProfilesScreenModel, state: EditorState, onBack: (() -> Unit)?) {
     val draft = state.draft
+    // A phone has mobile data and Wi-Fi; a PC has Ethernet and Wi-Fi, and
+    // now and then a modem.
+    val networks = if (model.platform.kind == PlatformKind.Android) {
+        listOf(NetworkKind.Default, NetworkKind.Cellular, NetworkKind.Wifi)
+    } else {
+        listOf(NetworkKind.Default, NetworkKind.Ethernet, NetworkKind.Wifi, NetworkKind.Cellular)
+    }
     val toaster = LocalToaster.current
     val shortcuts = LocalShortcuts.current
     val scroll = rememberScrollState()
@@ -151,16 +167,31 @@ fun ProfileEditor(model: ProfilesScreenModel, state: EditorState, onBack: (() ->
                         style = AppTheme.typography.bodySmall,
                         color = AppTheme.colors.textSecondary,
                     )
+                    if (draft.session) {
+                        Spacer(Modifier.height(AppTheme.spacing.s))
+                        SwitchRow(
+                            title = "Бондинг: все транспорты сразу",
+                            description = "Скорости складываются, а если сеть или документ пропадёт, остальные продолжат. " +
+                                "Соединения распределяются по транспортам, UDP (SRT) делится по пакетам. " +
+                                "Разведите транспорты по сетям (мобильная и Wi-Fi) или по разным документам. Нужна нода node-v1.3.0 или новее.",
+                            checked = draft.bonding,
+                            onCheckedChange = { on -> model.updateDraft { it.copy(bonding = on) } },
+                        )
+                    }
                 }
 
                 AppCard {
                     SectionLabel(if (draft.session) "Основной транспорт" else "Транспорт")
                     Spacer(Modifier.height(AppTheme.spacing.m))
                     CarrierFields(
-                        carrier = ExtraTransport(draft.transport, draft.value, draft.uid, draft.priority),
+                        carrier = ExtraTransport(draft.transport, draft.value, draft.uid, draft.priority, draft.network),
                         session = draft.session,
                         showPriority = draft.session,
-                        onChange = { c -> model.updateDraft { it.copy(transport = c.type, value = c.value, uid = c.uid, priority = c.priority) } },
+                        networks = networks.takeIf { draft.session },
+                        onChange = { c ->
+                            model.updateDraft { it.copy(transport = c.type, value = c.value, uid = c.uid, priority = c.priority, network = c.network) }
+                        },
+                        account = { AccountDocumentRow(model, 0, draft.transport) },
                     )
                     if (!draft.session) {
                         Spacer(Modifier.height(AppTheme.spacing.l))
@@ -183,9 +214,13 @@ fun ProfileEditor(model: ProfilesScreenModel, state: EditorState, onBack: (() ->
                                     }, icon = Icons.Rounded.Close)
                                 }
                                 Spacer(Modifier.height(AppTheme.spacing.s))
-                                CarrierFields(extra, session = true, showPriority = true) { changed ->
-                                    model.updateDraft { p -> p.copy(extras = p.extras.mapIndexed { i, e -> if (i == index) changed else e }) }
-                                }
+                                CarrierFields(
+                                    extra, session = true, showPriority = true, networks = networks,
+                                    onChange = { changed ->
+                                        model.updateDraft { p -> p.copy(extras = p.extras.mapIndexed { i, e -> if (i == index) changed else e }) }
+                                    },
+                                    account = { AccountDocumentRow(model, index + 1, extra.type) },
+                                )
                             }
                         }
                         AppButton("Добавить транспорт", {
@@ -224,7 +259,14 @@ fun ProfileEditor(model: ProfilesScreenModel, state: EditorState, onBack: (() ->
 }
 
 @Composable
-private fun CarrierFields(carrier: ExtraTransport, session: Boolean, showPriority: Boolean, onChange: (ExtraTransport) -> Unit) {
+private fun CarrierFields(
+    carrier: ExtraTransport,
+    session: Boolean,
+    showPriority: Boolean,
+    networks: List<NetworkKind>? = null,
+    onChange: (ExtraTransport) -> Unit,
+    account: @Composable () -> Unit = {},
+) {
     Column(verticalArrangement = Arrangement.spacedBy(AppTheme.spacing.m)) {
         TransportDropdown(carrier.type, session) { onChange(carrier.copy(type = it)) }
         Row(horizontalArrangement = Arrangement.spacedBy(AppTheme.spacing.m)) {
@@ -254,6 +296,54 @@ private fun CarrierFields(carrier: ExtraTransport, session: Boolean, showPriorit
         if (carrier.type == TransportType.ONEME) {
             AppTextField(carrier.uid, { onChange(carrier.copy(uid = it.trim())) }, label = "ID пользователя MAX", placeholder = "Число из адреса звонка")
         }
+        if (networks != null) {
+            Column {
+                Text("Сеть", style = AppTheme.typography.bodySmall, color = AppTheme.colors.textSecondary)
+                Spacer(Modifier.height(6.dp))
+                Segmented(networks, carrier.network, { it.label }, { onChange(carrier.copy(network = it)) }, Modifier.fillUpTo(420.dp))
+            }
+        }
+        account()
+    }
+}
+
+/**
+ * Under a document field: whether the service's account is signed in, and
+ * a button that creates the document with it (signing in first if needed).
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AccountDocumentRow(model: ProfilesScreenModel, index: Int, type: TransportType) {
+    if (type == TransportType.CUPSONLINE) {
+        CupsRoomsRow(model, index)
+        return
+    }
+    val kind = AccountKind.of(type) ?: return
+    val statuses by model.accounts.status.collectAsState()
+    val status = statuses[kind] ?: AuthStatus.SignedOut
+    val (text, tone) = AccountsScreenModel.statusText(status, model.platform.now())
+    val busy = model.documentBusy != null
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(AppTheme.spacing.s),
+        verticalArrangement = Arrangement.spacedBy(AppTheme.spacing.s),
+        itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
+        StatusBadge("${kind.label}: ${text.replaceFirstChar { it.lowercase() }}", tone)
+        if (kind.createsDocuments) {
+            val what = DocumentKind.of(type)?.label ?: "документ"
+            val label = when {
+                model.documentBusy == index -> "Создаю $what…"
+                status is AuthStatus.SignedIn -> "Создать $what"
+                status is AuthStatus.Expired -> "Войти заново и создать"
+                else -> "Войти и создать $what"
+            }
+            AppButton(label, { model.createDocumentFor(index) }, style = ButtonStyle.Secondary, enabled = !busy, leadingResource = AppIcons.Add)
+        } else if (kind.signsIn && (status is AuthStatus.SignedOut || status is AuthStatus.Expired)) {
+            AppButton("Войти в ${kind.label}", { model.signIn(kind) }, style = ButtonStyle.Secondary, enabled = !busy)
+        }
+    }
+    if (model.documentError != null && model.documentErrorIndex == index) {
+        Text(model.documentError.orEmpty(), style = AppTheme.typography.bodySmall, color = AppTheme.colors.danger)
     }
 }
 
@@ -312,5 +402,37 @@ private fun IconPicker(selected: String, onSelect: (String) -> Unit) {
                 Icon(painterResource(AppIcons.byName(name)), name, tint = if (isSelected) Color.White else AppTheme.colors.textSecondary, modifier = Modifier.size(20.dp))
             }
         }
+    }
+}
+
+/**
+ * Under a Cups.online field: opens new rooms here, no exit needed first.
+ * The same string goes to the node, which then joins these rooms.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CupsRoomsRow(model: ProfilesScreenModel, index: Int) {
+    val busy = model.documentBusy != null
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(AppTheme.spacing.s),
+        verticalArrangement = Arrangement.spacedBy(AppTheme.spacing.s),
+        itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
+        AppButton(
+            if (model.documentBusy == index) "Создаю комнаты…" else "Сгенерировать комнаты",
+            { model.generateRoomsFor(index) },
+            style = ButtonStyle.Secondary,
+            enabled = !busy,
+            leadingResource = AppIcons.Add,
+        )
+    }
+    Text(
+        "Вход не нужен: OpenFlux откроет 4 комнаты на cups.online. " +
+            "Эту же строку укажите ноде — она зайдёт в эти комнаты, а не создаст свои.",
+        style = AppTheme.typography.caption,
+        color = AppTheme.colors.textSecondary,
+    )
+    if (model.documentError != null && model.documentErrorIndex == index) {
+        Text(model.documentError.orEmpty(), style = AppTheme.typography.bodySmall, color = AppTheme.colors.danger)
     }
 }

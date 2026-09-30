@@ -1,5 +1,7 @@
 package io.openflux.desktop.ui.settings
 
+import io.openflux.desktop.ui.components.LocalToaster
+import androidx.compose.foundation.clickable
 import io.openflux.desktop.ui.PlatformBackHandler
 import io.openflux.desktop.model.profile
 import androidx.compose.animation.animateColorAsState
@@ -46,6 +48,7 @@ import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import io.openflux.desktop.model.AppSettings
 import io.openflux.desktop.model.ConnectionMode
+import io.openflux.desktop.model.CoreRepos
 import io.openflux.desktop.model.CoreSource
 import io.openflux.desktop.model.ThemeMode
 import io.openflux.desktop.model.isActive
@@ -98,13 +101,52 @@ class SettingsScreenModel(val container: AppContainer) : ScreenModel {
     var mobileDetailOpen by mutableStateOf(false)
     var latestRelease by mutableStateOf<String?>(null)
     var checkingRelease by mutableStateOf(false)
+    /** The core download running, and the last one's result or error. */
+    var coreDownloading by mutableStateOf(false)
+    var coreDownloadResult by mutableStateOf<String?>(null)
+    var coreDownloadError by mutableStateOf<String?>(null)
+    /** Taps on the app version toward developer mode (see [tapVersion]). */
+    private var versionTaps = 0
+
+    /**
+     * A tap on the app version: the tenth turns developer mode on (it shows
+     * the Accounts tab), like an Android phone's build number. Returns what
+     * to tell the user, null for nothing.
+     */
+    fun tapVersion(): String? {
+        if (container.settings.settings.value.developerMode) return "Режим разработчика уже включён"
+        versionTaps++
+        val left = DEVELOPER_TAPS - versionTaps
+        return when {
+            left <= 0 -> {
+                versionTaps = 0
+                update { it.copy(developerMode = true) }
+                "Режим разработчика включён: появилась вкладка «Аккаунты»"
+            }
+            left <= 5 -> "Ещё $left ${taps(left)} до режима разработчика"
+            else -> null
+        }
+    }
+
+    private fun taps(n: Int) = when {
+        n % 10 == 1 && n % 100 != 11 -> "нажатие"
+        n % 10 in 2..4 && n % 100 !in 12..14 -> "нажатия"
+        else -> "нажатий"
+    }
+
+    /** Bumped after a download so the shown tag is read again. */
+    var coreDownloads by mutableStateOf(0)
 
     fun update(transform: (AppSettings) -> AppSettings) = container.settings.update(transform)
+
+    companion object {
+        const val DEVELOPER_TAPS = 10
+    }
 }
 
 object SettingsTab : Tab {
     override val options: TabOptions
-        @Composable get() = TabOptions(index = 3u, title = "Настройки", icon = painterResource(AppIcons.Settings))
+        @Composable get() = TabOptions(index = 4u, title = "Настройки", icon = painterResource(AppIcons.Settings))
 
     @Composable
     override fun Content() {
@@ -394,10 +436,57 @@ private fun CoreSettings(model: SettingsScreenModel) {
         Spacer(Modifier.height(AppTheme.spacing.s))
         Segmented(CoreSource.entries, settings.coreSource, { it.label }, { s -> model.update { it.copy(coreSource = s) } }, Modifier.fillUpTo(360.dp))
         Spacer(Modifier.height(AppTheme.spacing.m))
+        val repo = settings.coreSource.repo
         if (settings.coreSource == CoreSource.Bundled) {
             KeyValueRow("Встроенное ядро", platform.coreVersion)
             Text(
-                "Сборка ядра OpenFlux из форка с исправлениями Volga и поддержкой статуса для этого приложения.",
+                "Сборка ядра OpenFlux, с которой вышло это приложение.",
+                style = AppTheme.typography.bodySmall,
+                color = AppTheme.colors.textSecondary,
+            )
+        } else if (repo != null) {
+            val source = settings.coreSource
+            val tag = remember(source, model.coreDownloads) { platform.downloadedCore(source) }
+            val scope = rememberCoroutineScope()
+            KeyValueRow("Скачанное ядро", tag?.let { "$it ($repo)" } ?: "не скачано")
+            Spacer(Modifier.height(AppTheme.spacing.s))
+            AppButton(
+                when {
+                    model.coreDownloading -> "Скачиваю…"
+                    tag == null -> "Скачать последний релиз"
+                    else -> "Проверить и обновить"
+                },
+                {
+                    model.coreDownloading = true
+                    model.coreDownloadError = null
+                    model.coreDownloadResult = null
+                    scope.launch {
+                        try {
+                            val got = platform.downloadCore(source)
+                            model.coreDownloadResult = if (got == tag) "Уже последняя версия: $got" else "Скачано ядро $got"
+                        } catch (e: Exception) {
+                            model.coreDownloadError = e.message ?: "Не удалось скачать ядро"
+                        } finally {
+                            model.coreDownloading = false
+                            model.coreDownloads++
+                        }
+                    }
+                },
+                style = ButtonStyle.Secondary,
+                enabled = platform.coreDownloadSupported && !model.coreDownloading,
+            )
+            model.coreDownloadResult?.let {
+                Spacer(Modifier.height(AppTheme.spacing.s))
+                Text(it, style = AppTheme.typography.bodySmall, color = AppTheme.colors.success)
+            }
+            model.coreDownloadError?.let {
+                Spacer(Modifier.height(AppTheme.spacing.s))
+                Text(it, style = AppTheme.typography.bodySmall, color = AppTheme.colors.danger)
+            }
+            Spacer(Modifier.height(AppTheme.spacing.s))
+            Text(
+                "Последний релиз v* из github.com/$repo для этой системы, сверенный с SHA256SUMS.txt релиза. " +
+                    "Подключение перезапустится с ним при следующем старте. Мастер «Своя нода» всегда работает со встроенным ядром.",
                 style = AppTheme.typography.bodySmall,
                 color = AppTheme.colors.textSecondary,
             )
@@ -495,8 +584,17 @@ private fun InterfaceSettings(model: SettingsScreenModel) {
 private fun AboutSettings(model: SettingsScreenModel) {
     val platform = model.container.platform
     val scope = rememberCoroutineScope()
+    val toaster = LocalToaster.current
+    val settings by model.container.settings.settings.collectAsState()
     AppCard(padding = 0.dp) {
-        KeyValueRow("Версия приложения", platform.appVersion)
+        KeyValueRow(
+            "Версия приложения",
+            platform.appVersion,
+            // Ten taps: developer mode.
+            Modifier.clickable(remember { MutableInteractionSource() }, indication = null) {
+                model.tapVersion()?.let { toaster.show(it, Tone.Accent) }
+            },
+        )
         HorizontalRule()
         KeyValueRow("Ядро OpenFlux", platform.coreVersion)
         HorizontalRule()
@@ -509,6 +607,16 @@ private fun AboutSettings(model: SettingsScreenModel) {
             },
         )
     }
+    if (settings.developerMode) {
+        AppCard(padding = AppTheme.spacing.s) {
+            SwitchRow(
+                "Режим разработчика",
+                "Вкладка «Аккаунты»: вход в сервисы и автоматическое создание документов.",
+                checked = true,
+                onCheckedChange = { on -> model.update { it.copy(developerMode = on) } },
+            )
+        }
+    }
     AppButton("Проверить обновления", {
         model.checkingRelease = true
         scope.launch {
@@ -518,7 +626,8 @@ private fun AboutSettings(model: SettingsScreenModel) {
     }, style = ButtonStyle.Secondary)
     SectionLabel("Репозитории")
     AppCard(padding = AppTheme.spacing.s) {
-        LinkRow("OpenFlux (ядро)", "github.com/p1neappleXpress/OpenFlux", "https://github.com/p1neappleXpress/OpenFlux", platform::openUrl)
+        LinkRow("OpenFlux (ядро, форк)", "github.com/${CoreRepos.FORK}", "https://github.com/${CoreRepos.FORK}", platform::openUrl)
+        LinkRow("OpenFlux (ядро, оригинал)", "github.com/${CoreRepos.OFFICIAL}", "https://github.com/${CoreRepos.OFFICIAL}", platform::openUrl)
         LinkRow("OpenFlux Android", "github.com/damnurmum/OpenFlux-Android", "https://github.com/damnurmum/OpenFlux-Android", platform::openUrl)
         LinkRow("Этот клиент", "github.com/${platform.clientRepo}", "https://github.com/${platform.clientRepo}", platform::openUrl)
     }

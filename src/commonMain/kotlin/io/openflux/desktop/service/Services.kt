@@ -1,9 +1,14 @@
 package io.openflux.desktop.service
 
 import androidx.compose.runtime.staticCompositionLocalOf
+import io.openflux.desktop.model.AccountKind
+import io.openflux.desktop.model.AccountSession
 import io.openflux.desktop.model.AppSettings
 import io.openflux.desktop.model.CaptchaPrompt
+import io.openflux.desktop.model.ConnectionMode
 import io.openflux.desktop.model.ConnectionState
+import io.openflux.desktop.model.CoreSource
+import io.openflux.desktop.model.NodeCoreSource
 import io.openflux.desktop.model.ExitAddress
 import io.openflux.desktop.model.LogLevel
 import io.openflux.desktop.model.LogLine
@@ -15,6 +20,7 @@ import io.openflux.desktop.model.SshTarget
 import io.openflux.desktop.model.Profile
 import io.openflux.desktop.model.ShareLinkCodec
 import io.openflux.desktop.model.TrafficStats
+import io.openflux.desktop.model.YandexDocument
 import io.openflux.desktop.ui.BrowserPage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,6 +38,13 @@ interface SettingsRepository {
     fun update(transform: (AppSettings) -> AppSettings)
 }
 
+/** Saved sign-ins, one per service. The file is readable by its owner only. */
+interface AccountRepository {
+    val sessions: StateFlow<Map<AccountKind, AccountSession>>
+    fun save(session: AccountSession)
+    fun remove(kind: AccountKind)
+}
+
 /** Runs the OpenFlux core for one profile at a time. */
 interface ConnectionService {
     val state: StateFlow<ConnectionState>
@@ -46,7 +59,13 @@ interface ConnectionService {
     /** The Yandex check in the built-in browser while [captcha] is open. */
     val captchaPage: StateFlow<BrowserPage?>
 
-    fun connect(profile: Profile)
+    /**
+     * Starts [profile] in [mode], or in the settings' mode when null. The
+     * node wizard checks a new node as a client whatever the app is set
+     * to: in exit mode the check ran a second exit on the node's own
+     * documents, which took its clients' packets.
+     */
+    fun connect(profile: Profile, mode: ConnectionMode? = null)
     fun disconnect()
     fun refreshExitAddress()
     fun clearLogs()
@@ -54,6 +73,14 @@ interface ConnectionService {
     fun openCaptcha()
     fun submitCaptcha()
     fun dismissCaptcha()
+
+    /**
+     * Hands the saved sign-in of [kind] to the exit over the tunnel, for
+     * each of the profile's transports of that service; the exit applies
+     * and keeps it. Returns how many transports it went to.
+     */
+    suspend fun pushAccountToExit(kind: AccountKind): Int =
+        throw UnsupportedOperationException("Передать вход ноде здесь нельзя")
 
     /** Stops the core and undoes system changes; called once on app exit. */
     fun shutdown()
@@ -75,6 +102,7 @@ interface PlatformServices {
     val fullTunnelSupported: Boolean
     /** Whether OpenFlux runs with administrator rights, which the full tunnel needs. */
     val elevated: Boolean
+
     /**
      * How the full tunnel gets administrator rights for the core on each
      * connect, in the user's words ("macOS спросит пароль администратора"),
@@ -109,6 +137,20 @@ interface PlatformServices {
     fun now(): Long
     /** Newest app release tag on GitHub, null when unknown. */
     suspend fun latestRelease(): String?
+
+    /** Whether [downloadCore] works here (the desktop; Android has its core built in). */
+    val coreDownloadSupported: Boolean get() = false
+    /** The release tag of the core downloaded for [source] (Fork, Official), null when there is none. */
+    fun downloadedCore(source: CoreSource): String? = null
+    /**
+     * Downloads the newest release core for [source] from its repository on
+     * GitHub, checked against the release's SHA256SUMS.txt, and returns the
+     * release tag.
+     */
+    suspend fun downloadCore(source: CoreSource): String = throw UnsupportedOperationException("Скачивание ядра здесь не поддерживается")
+
+    /** New cups.online rooms, packed the way the core takes them; throws when none could be opened. */
+    suspend fun newCupsRooms(): String = throw UnsupportedOperationException("Комнаты здесь не создаются")
 }
 
 /**
@@ -118,22 +160,26 @@ interface PlatformServices {
  * Calls block until done and fail with NodeWizardException.
  */
 interface NodeWizardService {
-    /** SSH in, download the pinned installer and look at the server. */
-    suspend fun connect(target: SshTarget): ServerProbe
+    /**
+     * SSH in, download the pinned installer for [source] (whose core the
+     * node gets and follows) and look at the server.
+     */
+    suspend fun connect(target: SshTarget, source: NodeCoreSource): ServerProbe
     suspend fun newChannel(): NewChannel
     /**
      * What installing [channel] with [transports] (besides direct) would
      * change; the server picks the port. [autoUpdate] turns the server's
      * core updater on or off.
      */
-    suspend fun plan(channel: String, transports: List<NodeTransport>, autoUpdate: Boolean): NodePlan
-    /** Install and start the channel. */
+    suspend fun plan(channel: String, transports: List<NodeTransport>, withCookies: Boolean, autoUpdate: Boolean): NodePlan
+    /** Install and start the channel. [cookieHeader] "" leaves the node signed out of Yandex. */
     suspend fun apply(
         channel: NewChannel,
         transports: List<NodeTransport>,
         port: Int,
         autoUpdate: Boolean,
         sudoPassword: String,
+        cookieHeader: String,
     )
     suspend fun remove(channel: String, sudoPassword: String)
     /** Whether the node can use the Yandex document (edit by link), as an anonymous visitor. */
@@ -145,11 +191,23 @@ interface NodeWizardService {
     /** The addresses [host] resolves to, to compare with the tunnel's exit. */
     suspend fun resolve(host: String): Set<String>
 
+    /** The Yandex page while [createDocument] runs. */
+    val documentPage: StateFlow<BrowserPage?>
+
     /** This attempt's trace: every SSH/RPC call and the wizard's own step narration, for the Logs tab. */
     val logs: StateFlow<List<LogLine>>
     fun clearLogs()
     /** Adds a line to [logs] from outside (the wizard model's own step narration). */
     fun note(text: String, level: LogLevel = LogLevel.Info)
+
+    /**
+     * Opens Yandex in the built-in browser (downloaded on first use) for the
+     * user to sign in, then creates /openflux/[fileName] on their Disk with
+     * edit access by link. [onStep] reports progress. The sign-in is wiped
+     * from the browser afterwards; only the returned cookies keep it.
+     */
+    suspend fun createDocument(fileName: String, onStep: (String) -> Unit): YandexDocument
+    fun cancelDocument()
 
     /** Ends the SSH session and the helper process. */
     fun close()
@@ -163,6 +221,7 @@ class AppContainer(
     val platform: PlatformServices,
     val shareCodec: ShareLinkCodec,
     val nodeWizard: NodeWizardService,
+    val accounts: Accounts,
 ) {
     /** An `openflux://` link opened from outside (a scanned code, a chat); the Profiles screen imports it. */
     val incomingLink = MutableStateFlow<String?>(null)

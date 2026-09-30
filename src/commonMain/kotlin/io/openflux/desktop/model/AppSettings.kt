@@ -12,9 +12,34 @@ enum class ConnectionMode(val label: String, val description: String) {
     Exit("Выходная нода", "Этот компьютер выпускает в интернет других"),
 }
 
-/** Which core binary runs the connection. */
+/**
+ * Which core binary runs the connection: the one packed with the app, the
+ * newest release downloaded from a core repository ([repo]), or a file of
+ * the user's own.
+ */
 @Serializable
-enum class CoreSource(val label: String) { Bundled("Встроенное ядро"), Custom("Свой файл") }
+enum class CoreSource(val label: String, val repo: String? = null) {
+    Bundled("Встроенное"),
+    Fork("Форк", CoreRepos.FORK),
+    Official("Оригинал", CoreRepos.OFFICIAL),
+    Custom("Свой файл"),
+}
+
+/** The OpenFlux core repositories: this fork and the original. */
+object CoreRepos {
+    const val FORK = "meepo161/OpenFlux"
+    const val OFFICIAL = "p1neappleXpress/OpenFlux"
+}
+
+/**
+ * Whose core the "Своя нода" wizard installs on the server; the node's
+ * updater then follows that repository's releases. [id] is the core's
+ * --node-wizard source.
+ */
+enum class NodeCoreSource(val id: String, val label: String, val repo: String) {
+    Fork("fork", "Форк", CoreRepos.FORK),
+    Official("official", "Оригинал", CoreRepos.OFFICIAL),
+}
 
 /** The Windows proxy settings found before OpenFlux changed them. */
 @Serializable
@@ -66,10 +91,20 @@ data class AppSettings(
     /** Set while OpenFlux has changed the Windows proxy; restored on exit or next start. */
     val savedSystemProxy: SavedSystemProxy? = null,
     val sidebarCollapsed: Boolean = false,
+    /**
+     * Developer mode: shows the Accounts tab. Turned on by tapping the app
+     * version in Settings → About ten times, off by its switch there.
+     */
+    val developerMode: Boolean = false,
     /** The main window's last size and place, restored on the next start. */
     val window: WindowBounds? = null,
     /** Node wizard: trusted SSH host keys by "host:port". */
     val knownHostKeys: Map<String, String> = emptyMap(),
+    /**
+     * Open documents as the signed-in account (Accounts tab): the sign-in
+     * goes into the core's cookie store, and to your own nodes.
+     */
+    val useAccountSessions: Boolean = true,
     /** Node wizard: servers used before, newest first. No passwords. */
     val knownServers: List<KnownServer> = emptyList(),
 )

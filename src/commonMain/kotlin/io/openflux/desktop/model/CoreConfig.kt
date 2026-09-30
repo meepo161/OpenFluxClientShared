@@ -30,6 +30,7 @@ object CoreConfig {
         val problems = profile.problems()
         require(problems.isEmpty()) { problems.first() }
         val exit = settings.mode == ConnectionMode.Exit
+        if (exit) profile.exitProblem()?.let { throw IllegalArgumentException(it) }
         val socks = "$LOOPBACK:${settings.socksPort}"
         val http = "$LOOPBACK:${settings.socksPort + 1}"
         return if (profile.session) session(profile, settings, paths, exit, socks, http) else classic(profile, settings, paths, exit, socks, http)
@@ -52,12 +53,14 @@ object CoreConfig {
             }
             appendLine("EncryptionKeyFile = ${confValue(paths.keyFile ?: error("Session requires a key"))}")
             appendLine("CookieStore = ${confValue(paths.cookieStore)}")
+            if (!exit && profile.bonding) appendLine("Bonding = yes")
             val specs = profile.sessionSpecs().filterNot { exit && it.type == TransportType.DIRECT }
             for (spec in specs) {
                 appendLine()
                 appendLine("[Transport ${spec.name}]")
                 appendLine("Type = ${spec.type.cliName}")
                 appendLine("Priority = ${spec.priority}")
+                if (spec.network != NetworkKind.Default) appendLine("Network = ${spec.network.cli}")
                 when (spec.type.kind) {
                     ValueKind.DocumentUrl -> appendLine("URL = ${confValue(spec.value)}")
                     ValueKind.Address -> appendLine("Dial = ${confValue(spec.value)}")

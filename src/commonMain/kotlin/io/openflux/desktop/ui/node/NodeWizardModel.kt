@@ -1,5 +1,8 @@
 package io.openflux.desktop.ui.node
 
+import io.openflux.desktop.model.DocumentKind
+import io.openflux.desktop.service.AccountException
+import io.openflux.desktop.model.AccountKind
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -10,6 +13,7 @@ import io.openflux.desktop.model.ExitAddress
 import io.openflux.desktop.model.KnownServer
 import io.openflux.desktop.model.LogLevel
 import io.openflux.desktop.model.NewChannel
+import io.openflux.desktop.model.NodeCoreSource
 import io.openflux.desktop.model.NodeDocuments
 import io.openflux.desktop.model.NodePlan
 import io.openflux.desktop.model.NodeTransport
@@ -70,6 +74,8 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
     var password by mutableStateOf("")
     var privateKey by mutableStateOf("")
     var passphrase by mutableStateOf("")
+    /** Whose core the server gets and then follows with its updater. */
+    var nodeCore by mutableStateOf(NodeCoreSource.Fork)
     var hostKeyPrompt by mutableStateOf<HostKeyPrompt?>(null)
         private set
     var probe by mutableStateOf<ServerProbe?>(null)
@@ -85,9 +91,13 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
     var name by mutableStateOf("")
     /** The carriers besides direct, which every channel has as the backup. */
     var useVolga by mutableStateOf(true)
+    /** The Yandex document again, through the older Yandex Docs carrier. */
+    var useYandexDocs by mutableStateOf(false)
     var useMailru by mutableStateOf(false)
+    var useBoards by mutableStateOf(false)
     var useCups by mutableStateOf(false)
     var mailruInput by mutableStateOf("")
+    var boardInput by mutableStateOf("")
     /** The cups.online rooms made for this channel, kept if the user goes back. */
     private var cupsRooms = ""
     var documentInput by mutableStateOf("")
@@ -96,6 +106,17 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
     /** Why the node, not this computer, will check the document. */
     var documentWarning by mutableStateOf("")
         private set
+    /** Progress of the built-in browser while the document is being made. */
+    var documentProgress by mutableStateOf<String?>(null)
+        private set
+    /** The Yandex sign-in for the node, dropped once it is installed. */
+    private var yandexCookies = ""
+    /** The document the sign-in created; another document gets none. */
+    private var cookiesDocument = ""
+    /** The node will get the Yandex sign-in: there is one and the channel has a Yandex document. */
+    val nodeSignedIn: Boolean get() = withCookies
+    /** The Yandex page to show while the document is being made. */
+    val documentPage get() = service.documentPage
 
     // Step 3: plan.
     var plan by mutableStateOf<NodePlan?>(null)
@@ -118,6 +139,13 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
     var profile by mutableStateOf<Profile?>(null)
         private set
     var verifiedIp by mutableStateOf("")
+        private set
+    /**
+     * The new node answered the Session (its key and document are right),
+     * though this device could not ask where the traffic leaves: Android
+     * keeps the app out of its own VPN.
+     */
+    var sessionProven by mutableStateOf(false)
         private set
     var primaryUp by mutableStateOf(false)
         private set
@@ -175,7 +203,7 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
                 true
             } else false
         }) {
-            probe = service.connect(target)
+            probe = service.connect(target, nodeCore)
             this.target = target
             lastServerReply = container.platform.now()
             settings.update { s -> s.copy(knownServers = NodeServers.remember(s.knownServers, KnownServer(host, port, user))) }
@@ -200,12 +228,76 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
 
     // ---- step 2: document ----
 
+    fun createDocument() {
+        if (channel == null) return
+        launchCall("Открываю Яндекс во встроенном браузере…") {
+            try {
+                val fileName = NodeDocuments.fileName(name, host, container.platform.now())
+                val document = service.createDocument(fileName) { step ->
+                    documentProgress = step
+                    service.note(step, LogLevel.Debug)
+                }
+                yandexCookies = document.cookieHeader.takeIf(NodeDocuments::signedIn).orEmpty()
+                cookiesDocument = document.url
+                checkNow(document.url)
+            } finally {
+                documentProgress = null
+            }
+        }
+    }
+
+    fun cancelDocument() {
+        service.cancelDocument()
+    }
+
+    /** The Yandex document is needed: the Volga or the Yandex Docs carrier is on. */
+    val needsYandexDocument: Boolean get() = useVolga || useYandexDocs
+
+    /**
+     * The channel's Yandex board, made with the saved Yandex account
+     * (signing in first in the Accounts window) and opened to guests as
+     * editors, the way the node's boards carrier joins it.
+     */
+    fun createBoard() {
+        if (channel == null) return
+        launchCall("Открываю Яндекс Доски в окне входа…") {
+            try {
+                val fileName = NodeDocuments.fileName(name, host, container.platform.now())
+                boardInput = container.accounts.createDocument(DocumentKind.YandexBoard, fileName)
+                service.note("мастер: доска создана", LogLevel.Info)
+            } catch (e: AccountException) {
+                if (e.cancelled) return@launchCall
+                throw NodeWizardException(e.message ?: "Не получилось создать доску")
+            }
+        }
+    }
+
+    /**
+     * The channel's Mail.ru document, made with the saved Mail.ru account
+     * (signing in first in the Accounts window): published, open to editing
+     * by link, checked the way the node will open it.
+     */
+    fun createMailruDocument() {
+        if (channel == null) return
+        launchCall("Открываю Облако Mail в окне входа…") {
+            try {
+                val fileName = NodeDocuments.fileName(name, host, container.platform.now())
+                mailruInput = container.accounts.createDocument(AccountKind.Mailru, fileName)
+                service.note("мастер: документ Mail.ru создан", LogLevel.Info)
+            } catch (e: AccountException) {
+                if (e.cancelled) return@launchCall
+                throw NodeWizardException(e.message ?: "Не получилось создать документ Mail.ru")
+            }
+        }
+    }
+
     fun checkDocument() {
         launchCall("Проверяю документ так, как его увидит нода…") { checkNow(documentInput) }
     }
 
     private suspend fun checkNow(url: String) {
         val clean = NodeDocuments.clean(url) ?: throw NodeWizardException("Нужна ссылка вида https://docs.yandex.ru/edit/d/…")
+        if (clean != cookiesDocument) yandexCookies = ""
         documentUrl = clean
         documentInput = clean
         busy = "Проверяю документ так, как его увидит нода…"
@@ -232,15 +324,22 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
      */
     private suspend fun proceed() {
         val chosen = mutableListOf<NodeTransport>()
-        if (useVolga) {
-            if (documentUrl.isEmpty()) throw NodeWizardException("Создайте документ Яндекса или вставьте ссылку на свой")
-            chosen += NodeTransport(TransportType.VYANDEX.cliName, documentUrl)
+        if (needsYandexDocument && documentUrl.isEmpty()) {
+            throw NodeWizardException("Создайте документ Яндекса или вставьте ссылку на свой")
         }
+        if (useVolga) chosen += NodeTransport(TransportType.VYANDEX.cliName, documentUrl)
+        if (useYandexDocs) chosen += NodeTransport(TransportType.YANDEX.cliName, documentUrl)
         if (useMailru) {
             val link = NodeTransports.cleanMailru(mailruInput)
                 ?: throw NodeWizardException("Нужна публичная ссылка Mail.ru вида https://cloud.mail.ru/public/…/…")
             mailruInput = link
             chosen += NodeTransport(TransportType.MAILRU.cliName, link)
+        }
+        if (useBoards) {
+            val link = NodeTransports.cleanBoard(boardInput)
+                ?: throw NodeWizardException("Нужна ссылка на доску вида https://boards.yandex.ru/whiteboard/?hash=…")
+            boardInput = link
+            chosen += NodeTransport(TransportType.BOARDS.cliName, link)
         }
         if (useCups) {
             if (cupsRooms.isEmpty()) {
@@ -255,9 +354,19 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
         step = WizardStep.Plan
     }
 
+    /** The node gets the Yandex sign-in only for a Yandex document it has. */
+    private val withCookies: Boolean get() = yandexCookies.isNotEmpty() &&
+        transports.any { it.type == TransportType.VYANDEX.cliName || it.type == TransportType.YANDEX.cliName }
+
     private suspend fun askPlan() {
         busy = "Спрашиваю сервер, что изменится…"
-        plan = onServer(retry = true) { service.plan(channel!!.id, transports, autoUpdate) }
+        plan = onServer(retry = true) { service.plan(channel!!.id, transports, withCookies, autoUpdate) }
+    }
+
+    fun forgetYandexSignIn() {
+        yandexCookies = ""
+        // The plan lists the sign-in step; ask again without it.
+        launchCall("Спрашиваю сервер, что изменится…") { askPlan() }
     }
 
     fun changeAutoUpdate(on: Boolean) {
@@ -276,8 +385,10 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
         launchCall("Устанавливаю ноду: скачиваю ядро, пишу конфигурацию, запускаю…", onFailure = { e ->
             if (e.sudo) { error = "sudo не принял пароль"; true } else false
         }) {
-            onServer { service.apply(channel, transports, plan.port, autoUpdate, sudoPassword) }
+            val cookies = if (withCookies) yandexCookies else ""
+            onServer { service.apply(channel, transports, plan.port, autoUpdate, sudoPassword, cookies) }
             installed = true
+            yandexCookies = ""
             val link = service.shareLink(profileName(), channel.key, host.trim(), plan.port, transports)
             shareLink = link
             val candidate = Profile.fromShare(
@@ -317,22 +428,23 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
         step = WizardStep.Verify
         verifyFailed = null
         verifiedIp = ""
+        sessionProven = false
         primaryUp = false
         stopWaitingForPrimary = false
-        if (settings.settings.value.mode != ConnectionMode.Client) {
-            verifyFailed = "Проверка идёт в режиме клиента, а сейчас включён режим выходной ноды. Переключите режим на главной и повторите."
-            return
-        }
         busy = "Подключаюсь к новой ноде…"
         try {
             val expected = service.resolve(host.trim())
-            connection.connect(candidate)
+            // connect() works in the background: until the state changes,
+            // what shows is the previous attempt (a Failed of this same
+            // profile ended a retry at once with the old error).
+            val before = connection.state.value
+            connection.connect(candidate, ConnectionMode.Client)
             val deadline = container.platform.now() + VERIFY_TIMEOUT_MS
             // connect() is asynchronous: the previous connection may still
             // show until the new one starts.
             var started = false
             var lastProblem = ""
-            while (verifiedIp.isEmpty()) {
+            while (verifiedIp.isEmpty() && !sessionProven) {
                 if (stopWaitingForPrimary) throw NodeWizardException("Проверка остановлена: нода пока не ответила")
                 if (container.platform.now() > deadline) {
                     throw NodeWizardException(
@@ -341,7 +453,7 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
                     )
                 }
                 val state = connection.state.value
-                if (state.profile?.id == candidate.id) started = true
+                if (state !== before && state.profile?.id == candidate.id) started = true
                 else if (started) throw NodeWizardException("Проверку прервало отключение или другое подключение")
                 when {
                     !started -> Unit
@@ -359,6 +471,7 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
                                 }
                                 verifiedIp = address.ip
                             }
+                            is ExitAddress.NotCheckable -> sessionProven = true
                             is ExitAddress.Unavailable -> {
                                 // Like the Android wizard: the carrier may need a
                                 // moment (or a passed check); try until the deadline.
@@ -370,7 +483,7 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
                         }
                     }
                 }
-                if (verifiedIp.isEmpty()) delay(POLL_MS)
+                if (verifiedIp.isEmpty() && !sessionProven) delay(POLL_MS)
             }
             // Traffic may have gone through the direct backup. Give the
             // primary carrier the rest of the time to come up: a Yandex node
@@ -439,9 +552,10 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
 
     fun qr() = container.platform.qrMatrix(shareLink)
 
-    /** Ends SSH; drops the test connection of an unsaved profile. */
+    /** Ends SSH and the Yandex window; drops the test connection of an unsaved profile. */
     fun close() {
         job?.cancel()
+        service.cancelDocument()
         service.close()
         val state = connection.state.value
         if (!saved && profile != null && state.profile?.id == profile?.id && state.isActive) connection.disconnect()
@@ -450,6 +564,7 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
         privateKey = ""
         passphrase = ""
         sudoPassword = ""
+        yandexCookies = ""
     }
 
     /**
@@ -479,7 +594,7 @@ class NodeWizardModel(private val container: AppContainer, private val scope: Co
     private suspend fun reconnect(target: SshTarget) {
         val previous = busy
         busy = "Подключаюсь к серверу заново…"
-        probe = service.connect(target)
+        probe = service.connect(target, nodeCore)
         lastServerReply = container.platform.now()
         busy = previous
     }
