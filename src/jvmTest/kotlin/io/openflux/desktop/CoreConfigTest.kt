@@ -6,6 +6,7 @@ import io.openflux.desktop.model.ConnectionMode
 import io.openflux.desktop.model.CoreConfig
 import io.openflux.desktop.model.CorePaths
 import io.openflux.desktop.model.ExtraTransport
+import io.openflux.desktop.model.NetworkKind
 import io.openflux.desktop.model.Profile
 import io.openflux.desktop.model.TransportType
 import kotlin.test.Test
@@ -31,6 +32,39 @@ class CoreConfigTest {
             ExtraTransport(TransportType.DIRECT, "203.0.113.10:8445", priority = 50),
         ),
     )
+
+    @Test
+    fun bondingClientConfNamesNetworks() {
+        val bonded = session.copy(
+            bonding = true,
+            network = NetworkKind.Cellular,
+            extras = listOf(ExtraTransport(TransportType.MAILRU, "https://cloud.mail.ru/public/a/b", priority = 90, network = NetworkKind.Wifi)),
+        )
+        val conf = CoreConfig.build(bonded, AppSettings(), paths).conf!!
+        assertTrue("Bonding = yes" in conf)
+        val lines = conf.lines().map { it.trim() }
+        assertEquals("Network = cellular", lines[lines.indexOf("[Transport vyandex]") + 3], conf)
+        assertTrue("Network = wifi" in conf)
+        // Without a network or bonding nothing changes.
+        val plain = CoreConfig.build(session, AppSettings(), paths).conf!!
+        assertFalse("Bonding" in plain || "Network =" in plain)
+        // An exit agrees to bonding by itself.
+        assertFalse("Bonding" in CoreConfig.build(bonded, AppSettings(mode = ConnectionMode.Exit), paths).conf!!)
+    }
+
+    @Test
+    fun bondingSummaryNamesNetworks() {
+        val bonded = session.copy(bonding = true, network = NetworkKind.Cellular)
+        assertTrue(bonded.bondingSummary.startsWith("${TransportType.VYANDEX.shortLabel} · Мобильная + "), bonded.bondingSummary)
+        assertEquals("", session.bondingSummary)
+    }
+
+    @Test
+    fun bondingNeedsTwoSessionCarriers() {
+        assertTrue(session.copy(bonding = true).problems().isEmpty())
+        val one = Profile(id = "o", name = "o", transport = TransportType.MAILRU, value = "https://cloud.mail.ru/public/a/b", secret = secret, session = true, bonding = true)
+        assertTrue(one.problems().any { "бондинг" in it.lowercase() })
+    }
 
     @Test
     fun sessionClientConf() {

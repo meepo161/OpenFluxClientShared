@@ -385,6 +385,10 @@ private fun DetailsColumn(model: HomeScreenModel, selected: Profile?, state: Con
             HorizontalRule()
             KeyValueRow(if (profile.carriers.size > 1) "Транспорты" else "Транспорт", profile.summary)
             HorizontalRule()
+            if (profile.bondingSummary.isNotEmpty()) {
+                KeyValueRow("Бондинг", profile.bondingSummary)
+                HorizontalRule()
+            }
             if (profile.carriers.size > 1 && traffic.activeCarriers.isNotEmpty()) {
                 KeyValueRow("Сейчас через", traffic.activeCarriers.joinToString(" + ", transform = TransportType::carrierLabel))
                 HorizontalRule()

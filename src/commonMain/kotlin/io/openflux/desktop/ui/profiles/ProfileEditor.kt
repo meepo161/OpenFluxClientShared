@@ -72,6 +72,9 @@ import io.openflux.desktop.ui.components.LocalToaster
 import io.openflux.desktop.ui.components.MenuAction
 import io.openflux.desktop.ui.components.SectionLabel
 import io.openflux.desktop.ui.components.Segmented
+import io.openflux.desktop.ui.components.SwitchRow
+import io.openflux.desktop.model.NetworkKind
+import io.openflux.desktop.service.PlatformKind
 import io.openflux.desktop.ui.components.TextAction
 import io.openflux.desktop.ui.components.Tone
 import io.openflux.desktop.ui.components.appClickable
@@ -82,6 +85,13 @@ import org.jetbrains.compose.resources.painterResource
 @Composable
 fun ProfileEditor(model: ProfilesScreenModel, state: EditorState, onBack: (() -> Unit)?) {
     val draft = state.draft
+    // A phone has mobile data and Wi-Fi; a PC has Ethernet and Wi-Fi, and
+    // now and then a modem.
+    val networks = if (model.platform.kind == PlatformKind.Android) {
+        listOf(NetworkKind.Default, NetworkKind.Cellular, NetworkKind.Wifi)
+    } else {
+        listOf(NetworkKind.Default, NetworkKind.Ethernet, NetworkKind.Wifi, NetworkKind.Cellular)
+    }
     val toaster = LocalToaster.current
     val shortcuts = LocalShortcuts.current
     val scroll = rememberScrollState()
@@ -157,16 +167,30 @@ fun ProfileEditor(model: ProfilesScreenModel, state: EditorState, onBack: (() ->
                         style = AppTheme.typography.bodySmall,
                         color = AppTheme.colors.textSecondary,
                     )
+                    if (draft.session) {
+                        Spacer(Modifier.height(AppTheme.spacing.s))
+                        SwitchRow(
+                            title = "Бондинг: все транспорты сразу",
+                            description = "Скорости складываются, а если сеть или документ пропадёт, остальные продолжат. " +
+                                "Соединения распределяются по транспортам, UDP (SRT) делится по пакетам. " +
+                                "Разведите транспорты по сетям (мобильная и Wi-Fi) или по разным документам. Нужна нода node-v1.3.0 или новее.",
+                            checked = draft.bonding,
+                            onCheckedChange = { on -> model.updateDraft { it.copy(bonding = on) } },
+                        )
+                    }
                 }
 
                 AppCard {
                     SectionLabel(if (draft.session) "Основной транспорт" else "Транспорт")
                     Spacer(Modifier.height(AppTheme.spacing.m))
                     CarrierFields(
-                        carrier = ExtraTransport(draft.transport, draft.value, draft.uid, draft.priority),
+                        carrier = ExtraTransport(draft.transport, draft.value, draft.uid, draft.priority, draft.network),
                         session = draft.session,
                         showPriority = draft.session,
-                        onChange = { c -> model.updateDraft { it.copy(transport = c.type, value = c.value, uid = c.uid, priority = c.priority) } },
+                        networks = networks.takeIf { draft.session },
+                        onChange = { c ->
+                            model.updateDraft { it.copy(transport = c.type, value = c.value, uid = c.uid, priority = c.priority, network = c.network) }
+                        },
                         account = { AccountDocumentRow(model, 0, draft.transport) },
                     )
                     if (!draft.session) {
@@ -191,7 +215,7 @@ fun ProfileEditor(model: ProfilesScreenModel, state: EditorState, onBack: (() ->
                                 }
                                 Spacer(Modifier.height(AppTheme.spacing.s))
                                 CarrierFields(
-                                    extra, session = true, showPriority = true,
+                                    extra, session = true, showPriority = true, networks = networks,
                                     onChange = { changed ->
                                         model.updateDraft { p -> p.copy(extras = p.extras.mapIndexed { i, e -> if (i == index) changed else e }) }
                                     },
@@ -239,6 +263,7 @@ private fun CarrierFields(
     carrier: ExtraTransport,
     session: Boolean,
     showPriority: Boolean,
+    networks: List<NetworkKind>? = null,
     onChange: (ExtraTransport) -> Unit,
     account: @Composable () -> Unit = {},
 ) {
@@ -270,6 +295,13 @@ private fun CarrierFields(
         }
         if (carrier.type == TransportType.ONEME) {
             AppTextField(carrier.uid, { onChange(carrier.copy(uid = it.trim())) }, label = "ID пользователя MAX", placeholder = "Число из адреса звонка")
+        }
+        if (networks != null) {
+            Column {
+                Text("Сеть", style = AppTheme.typography.bodySmall, color = AppTheme.colors.textSecondary)
+                Spacer(Modifier.height(6.dp))
+                Segmented(networks, carrier.network, { it.label }, { onChange(carrier.copy(network = it)) }, Modifier.fillUpTo(420.dp))
+            }
         }
         account()
     }
