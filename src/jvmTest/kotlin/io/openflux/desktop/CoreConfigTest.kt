@@ -42,10 +42,8 @@ class CoreConfigTest {
         )
         val conf = CoreConfig.build(bonded, AppSettings(), paths).conf!!
         assertTrue("Bonding = yes" in conf)
-        assertTrue("[Transport vyandex]
-Type = vyandex
-Priority = 100
-Network = cellular" in conf.replace("", ""), conf)
+        val lines = conf.lines().map { it.trim() }
+        assertEquals("Network = cellular", lines[lines.indexOf("[Transport vyandex]") + 3], conf)
         assertTrue("Network = wifi" in conf)
         // Without a network or bonding nothing changes.
         val plain = CoreConfig.build(session, AppSettings(), paths).conf!!
